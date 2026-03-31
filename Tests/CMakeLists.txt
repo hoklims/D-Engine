@@ -24,3 +24,11 @@ add_executable(EcsTest
 )
 target_link_libraries(EcsTest PRIVATE DEcs)
 add_test(NAME EcsTest COMMAND EcsTest)
+
+add_executable(RuntimeEcsTest
+    RuntimeEcsTest.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/SimState.cpp
+)
+target_link_libraries(RuntimeEcsTest PRIVATE DEcs)
+target_include_directories(RuntimeEcsTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
+add_test(NAME RuntimeEcsTest COMMAND RuntimeEcsTest)

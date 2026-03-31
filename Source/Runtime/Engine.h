@@ -7,6 +7,7 @@
 #include "Runtime/FrameInfo.h"
 #include "Runtime/FrameTelemetry.h"
 #include "Runtime/ScopeTimer.h"
+#include "Runtime/SimState.h"
 
 namespace de {
 
@@ -18,6 +19,7 @@ struct Engine {
 
     const FrameInfo& frame_info() const;
     const FrameTelemetry& frame_telemetry() const;
+    const SimState& sim_state() const;
 
 private:
     EngineConfig config_;
@@ -27,6 +29,7 @@ private:
     FrameInfo frame_info_;
     FrameTelemetry telemetry_;        // published snapshot (last complete frame)
     FrameTelemetry wip_telemetry_;    // work-in-progress buffer (current frame)
+    SimState sim_;
     bool running_ = false;
 
     void begin_frame();

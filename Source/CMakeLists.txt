@@ -11,11 +11,15 @@ add_executable(DEngine WIN32
     Runtime/FrameTelemetry.h
     Runtime/ScopeTimer.h
     Runtime/ScopeTimer.cpp
+    Runtime/Components.h
+    Runtime/SimState.h
+    Runtime/SimState.cpp
     Platform/Window.h
     Platform/Window.cpp
 )
 
 target_include_directories(DEngine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(DEngine PRIVATE DEcs)
 
 # --- ECS static library (standalone, no Win32 dependency) ---
 add_library(DEcs STATIC

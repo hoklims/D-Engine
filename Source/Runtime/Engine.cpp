@@ -26,6 +26,7 @@ bool Engine::init(const EngineConfig& cfg) {
     frame_info_ = {};
     telemetry_ = {};
     wip_telemetry_ = {};
+    sim_.bootstrap();
     running_ = true;
     return true;
 }
@@ -50,6 +51,7 @@ void Engine::run() {
 
 void Engine::shutdown() {
     running_ = false;
+    sim_.shutdown();
     window_.destroy();
 }
 
@@ -59,6 +61,10 @@ const FrameInfo& Engine::frame_info() const {
 
 const FrameTelemetry& Engine::frame_telemetry() const {
     return telemetry_;
+}
+
+const SimState& Engine::sim_state() const {
+    return sim_;
 }
 
 void Engine::begin_frame() {
@@ -100,11 +106,7 @@ void Engine::update_frame(double alpha) {
 }
 
 void Engine::update_fixed(double step_dt) {
-    // Future: ECS simulation tick
-    // Future: crowd logic
-    // Future: navigation / avoidance
-    // Future: combat resolution
-    (void)step_dt;
+    sim_.tick(step_dt);
 }
 
 void Engine::update_presentation(double alpha) {
