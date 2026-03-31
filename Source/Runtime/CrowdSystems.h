@@ -69,7 +69,13 @@ uint32_t compute_desired_movement(WorldView& view, float dt, CommandBuffer& cmds
 // Set velocity = desired_direction * move_speed (instant steering).
 uint32_t apply_crowd_steering(WorldView& view, float dt, CommandBuffer& cmds);
 
-// Tick cooldowns, produce hit events when in range and ready.
+// Melee broadphase: for each crowd agent, query the spatial grid for
+// enemies within AttackRange.  Builds a buffer of (attacker, defender)
+// pairs consumed by attack_targets.  Reduces attack_targets to a simple
+// cooldown + emit pass over pre-filtered pairs.
+uint32_t gather_melee_candidates(WorldView& view, float dt, CommandBuffer& cmds);
+
+// Tick cooldowns, produce hit events for broadphase-validated pairs.
 // Does NOT modify Health directly -- damage is deferred to ResolveDamage.
 uint32_t attack_targets(WorldView& view, float dt, CommandBuffer& cmds);
 
@@ -93,6 +99,11 @@ uint32_t crowd_nav_queries_this_tick();
 uint32_t crowd_nav_failures_this_tick();
 uint32_t crowd_lod_tier_count(uint8_t tier);
 uint32_t crowd_lod_skipped_this_tick();
+
+// Melee broadphase telemetry (this tick).
+uint32_t melee_broadphase_checks_this_tick();
+uint32_t melee_pairs_this_tick();
+uint32_t melee_attacks_this_tick();
 
 // Install LOD config and current tick count for gating decisions.
 void     set_behavior_lod_config(const BehaviorLodConfig* cfg);

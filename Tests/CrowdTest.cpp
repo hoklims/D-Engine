@@ -198,7 +198,7 @@ static void test_crowd_system_order() {
     sim.tick(1.0);
 
     de::SimSnapshot snap = sim.snapshot();
-    check(snap.system_count == 11, "system_order: 11 systems registered");
+    check(snap.system_count == 12, "system_order: 12 systems registered");
 
     check(std::strcmp(snap.systems[0].name, "SelectTargets") == 0,
           "system_order: [0] SelectTargets");
@@ -212,16 +212,18 @@ static void test_crowd_system_order() {
           "system_order: [4] ApplyCrowdSteer");
     check(std::strcmp(snap.systems[5].name, "ApplySeparation") == 0,
           "system_order: [5] ApplySeparation");
-    check(std::strcmp(snap.systems[6].name, "AttackTargets") == 0,
-          "system_order: [6] AttackTargets");
-    check(std::strcmp(snap.systems[7].name, "ResolveDamage") == 0,
-          "system_order: [7] ResolveDamage");
-    check(std::strcmp(snap.systems[8].name, "RemoveDead") == 0,
-          "system_order: [8] RemoveDead");
-    check(std::strcmp(snap.systems[9].name, "IntegrateVelocity") == 0,
-          "system_order: [9] IntegrateVelocity");
-    check(std::strcmp(snap.systems[10].name, "IntegratePosition") == 0,
-          "system_order: [10] IntegratePosition");
+    check(std::strcmp(snap.systems[6].name, "MeleeBroadphase") == 0,
+          "system_order: [6] MeleeBroadphase");
+    check(std::strcmp(snap.systems[7].name, "AttackTargets") == 0,
+          "system_order: [7] AttackTargets");
+    check(std::strcmp(snap.systems[8].name, "ResolveDamage") == 0,
+          "system_order: [8] ResolveDamage");
+    check(std::strcmp(snap.systems[9].name, "RemoveDead") == 0,
+          "system_order: [9] RemoveDead");
+    check(std::strcmp(snap.systems[10].name, "IntegrateVelocity") == 0,
+          "system_order: [10] IntegrateVelocity");
+    check(std::strcmp(snap.systems[11].name, "IntegratePosition") == 0,
+          "system_order: [11] IntegratePosition");
 }
 
 // =================================================================
@@ -292,8 +294,8 @@ static void test_crowd_bootstrap_idempotent() {
     de::SimSnapshot snap = sim.snapshot();
     check(snap.tick_count == 0,
           "crowd_idempotent: tick_count reset");
-    check(snap.system_count == 11,
-          "crowd_idempotent: 11 systems, not 22");
+    check(snap.system_count == 12,
+          "crowd_idempotent: 12 systems, not 24");
     check(snap.crowd_agent_count == 20,
           "crowd_idempotent: crowd metrics correct after re-bootstrap");
 }

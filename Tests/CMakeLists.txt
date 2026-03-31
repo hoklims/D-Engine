@@ -60,3 +60,12 @@ add_executable(NavTest
 target_link_libraries(NavTest PRIVATE DEcs)
 target_include_directories(NavTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
 add_test(NAME NavTest COMMAND NavTest)
+
+add_executable(MeleeTest
+    MeleeTest.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/SimState.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/CrowdSystems.cpp
+)
+target_link_libraries(MeleeTest PRIVATE DEcs)
+target_include_directories(MeleeTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
+add_test(NAME MeleeTest COMMAND MeleeTest)

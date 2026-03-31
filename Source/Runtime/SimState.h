@@ -57,6 +57,11 @@ struct SimSnapshot {
     // Behavior LOD telemetry (this tick).
     uint32_t    lod_tier_counts[4]     = {};
     uint32_t    lod_skipped_this_tick  = 0;
+
+    // Melee broadphase telemetry (this tick).
+    uint32_t    melee_broadphase_checks = 0;
+    uint32_t    melee_pairs_this_tick   = 0;
+    uint32_t    melee_attacks_this_tick = 0;
 };
 
 // Signature for a fixed-step simulation system.
@@ -166,6 +171,9 @@ private:
     bool          nav_grid_active_            = false;
     uint32_t      lod_tier_counts_[4]         = {};
     uint32_t      lod_skipped_this_tick_      = 0;
+    uint32_t      melee_bp_checks_           = 0;
+    uint32_t      melee_pairs_this_tick_     = 0;
+    uint32_t      melee_attacks_this_tick_   = 0;
     BehaviorLodConfig lod_config_;
 
     void register_systems();

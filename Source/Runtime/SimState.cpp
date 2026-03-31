@@ -54,6 +54,9 @@ void SimState::bootstrap() {
     set_battlefield_grids(nullptr, 0);
     for (auto& c : lod_tier_counts_) c = 0;
     lod_skipped_this_tick_       = 0;
+    melee_bp_checks_             = 0;
+    melee_pairs_this_tick_       = 0;
+    melee_attacks_this_tick_     = 0;
     lod_config_                  = BehaviorLodConfig{};
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
@@ -94,6 +97,9 @@ void SimState::bootstrap_crowd(const CrowdConfig& cfg) {
     set_battlefield_grids(nullptr, 0);
     for (auto& c : lod_tier_counts_) c = 0;
     lod_skipped_this_tick_       = 0;
+    melee_bp_checks_             = 0;
+    melee_pairs_this_tick_       = 0;
+    melee_attacks_this_tick_     = 0;
     lod_config_                  = BehaviorLodConfig{};
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
@@ -219,6 +225,9 @@ void SimState::tick(double step_dt) {
     targeting_candidates_scanned_   = crowd_candidates_scanned_this_tick();
     separation_pairs_this_tick_     = crowd_separation_pairs_this_tick();
     agents_engaged_                 = crowd_agents_engaged_this_tick();
+    melee_bp_checks_                = melee_broadphase_checks_this_tick();
+    melee_pairs_this_tick_          = melee_pairs_this_tick();
+    melee_attacks_this_tick_        = melee_attacks_this_tick();
     nav_queries_this_tick_          = crowd_nav_queries_this_tick();
     nav_failures_this_tick_         = crowd_nav_failures_this_tick();
     cmds_queued_last_ = cmds_.pending();
@@ -250,6 +259,9 @@ void SimState::shutdown() {
     set_battlefield_grids(nullptr, 0);
     for (auto& c : lod_tier_counts_) c = 0;
     lod_skipped_this_tick_       = 0;
+    melee_bp_checks_             = 0;
+    melee_pairs_this_tick_       = 0;
+    melee_attacks_this_tick_     = 0;
     lod_config_                  = BehaviorLodConfig{};
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
@@ -281,6 +293,9 @@ SimSnapshot SimState::snapshot() const {
     snap.nav_blocked_cells              = nav_blocked_cells_;
     for (int t = 0; t < 4; ++t) snap.lod_tier_counts[t] = lod_tier_counts_[t];
     snap.lod_skipped_this_tick          = lod_skipped_this_tick_;
+    snap.melee_broadphase_checks        = melee_bp_checks_;
+    snap.melee_pairs_this_tick          = melee_pairs_this_tick_;
+    snap.melee_attacks_this_tick        = melee_attacks_this_tick_;
     return snap;
 }
 
@@ -300,6 +315,7 @@ void SimState::register_crowd_systems() {
     add_system("ComputeDesiredMove", compute_desired_movement);
     add_system("ApplyCrowdSteer",    apply_crowd_steering);
     add_system("ApplySeparation",   apply_separation);
+    add_system("MeleeBroadphase",   gather_melee_candidates);
     add_system("AttackTargets",      attack_targets);
     add_system("ResolveDamage",      resolve_damage);
     add_system("RemoveDead",         remove_dead);

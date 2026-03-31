@@ -16,7 +16,14 @@ struct HitEvent {
     float    damage;
 };
 
-static std::vector<HitEvent> s_hit_buffer;
+// Broadphase output: attacker->defender pairs validated by spatial query.
+struct MeleePair {
+    EntityId attacker;
+    EntityId defender;
+};
+
+static std::vector<HitEvent>  s_hit_buffer;
+static std::vector<MeleePair> s_melee_pairs;
 static SpatialGrid s_grid;
 static const BattlefieldGrid* const* s_nav_grids = nullptr;
 static uint32_t s_nav_grid_count         = 0;
@@ -33,6 +40,11 @@ static const BehaviorLodConfig* s_lod_cfg = nullptr;
 static BehaviorLodConfig s_lod_default;
 static uint64_t s_crowd_tick             = 0;
 
+// Melee broadphase telemetry.
+static uint32_t s_melee_bp_checks        = 0;
+static uint32_t s_melee_pairs_count      = 0;
+static uint32_t s_melee_attacks          = 0;
+
 uint32_t crowd_attacks_this_tick()            { return s_attacks_this_tick; }
 uint32_t crowd_deaths_queued_this_tick()      { return s_deaths_this_tick; }
 uint32_t crowd_candidates_scanned_this_tick() { return s_candidates_scanned; }
@@ -42,6 +54,10 @@ uint32_t crowd_nav_queries_this_tick()        { return s_nav_queries; }
 uint32_t crowd_nav_failures_this_tick()       { return s_nav_failures; }
 uint32_t crowd_lod_tier_count(uint8_t tier)   { return (tier < k_lod_tier_count) ? s_lod_counts[tier] : 0; }
 uint32_t crowd_lod_skipped_this_tick()        { return s_lod_skipped; }
+
+uint32_t melee_broadphase_checks_this_tick()  { return s_melee_bp_checks; }
+uint32_t melee_pairs_this_tick()              { return s_melee_pairs_count; }
+uint32_t melee_attacks_this_tick()            { return s_melee_attacks; }
 
 void set_behavior_lod_config(const BehaviorLodConfig* cfg) { s_lod_cfg = cfg; }
 void set_crowd_tick_count(uint64_t tick) { s_crowd_tick = tick; }
@@ -62,7 +78,11 @@ void     reset_crowd_tick_counters() {
     s_nav_failures       = 0;
     for (auto& c : s_lod_counts) c = 0;
     s_lod_skipped        = 0;
+    s_melee_bp_checks    = 0;
+    s_melee_pairs_count  = 0;
+    s_melee_attacks      = 0;
     s_hit_buffer.clear();
+    s_melee_pairs.clear();
 }
 
 // -----------------------------------------------------------------------
@@ -300,37 +320,79 @@ uint32_t apply_crowd_steering(WorldView& view, float /*dt*/,
 }
 
 // -----------------------------------------------------------------------
+//  gather_melee_candidates  (broadphase)
+// -----------------------------------------------------------------------
+// For each crowd agent, query the spatial grid for enemies within
+// AttackRange.  Builds a deduplicated buffer of (attacker, defender)
+// pairs.  This is the melee broadphase -- it bounds the work that
+// attack_targets has to do by pre-filtering spatially.
+//
+// Uses the grid already built by select_targets (same tick).
+
+uint32_t gather_melee_candidates(WorldView& view, float /*dt*/,
+                                 CommandBuffer& /*cmds*/) {
+    s_melee_pairs.clear();
+    s_melee_bp_checks   = 0;
+    s_melee_pairs_count = 0;
+
+    uint32_t count = 0;
+    view.each<CrowdAgent, Team, Position, AttackRange>(
+        [&](EntityId self, CrowdAgent&, Team& my_team,
+            Position& pos, AttackRange& range) {
+            ++count;
+
+            s_melee_bp_checks += s_grid.for_each_nearby(
+                pos.x, pos.y, range.range, self,
+                [&](const SpatialGrid::Entry& e, float /*d2*/) {
+                    if (e.team == my_team.id) return;  // ally, skip
+                    s_melee_pairs.push_back({self, e.id});
+                });
+        });
+
+    s_melee_pairs_count = static_cast<uint32_t>(s_melee_pairs.size());
+    return count;
+}
+
+// -----------------------------------------------------------------------
 //  attack_targets
 // -----------------------------------------------------------------------
-// Tick cooldowns.  When in range and cooldown ready, emit a HitEvent.
-// Does NOT modify Health -- that is resolve_damage's job.
+// Tick all cooldowns.  Then iterate broadphase pairs: when cooldown is
+// ready, emit a HitEvent.  Does NOT modify Health -- that is
+// resolve_damage's job.
+//
+// Two passes:
+//   1) Tick cooldowns for every agent (deterministic, independent of
+//      broadphase result).
+//   2) Walk melee pairs and emit hits for ready attackers.
 
 uint32_t attack_targets(WorldView& view, float dt, CommandBuffer& /*cmds*/) {
     s_attacks_this_tick = 0;
+    s_melee_attacks     = 0;
     s_hit_buffer.clear();
+
+    // Pass 1: tick all cooldowns unconditionally.
     uint32_t count = 0;
-    view.each<CrowdAgent, Position, Target, AttackRange,
-              AttackDamage, AttackCooldown>(
-        [&](EntityId, CrowdAgent&, Position& pos, Target& tgt,
-            AttackRange& range, AttackDamage& dmg, AttackCooldown& cd) {
+    view.each<CrowdAgent, AttackCooldown>(
+        [&](EntityId, CrowdAgent&, AttackCooldown& cd) {
             ++count;
             cd.remaining -= dt;
-
-            if (!tgt.has_target || !view.alive(tgt.entity)) return;
-
-            const auto* tp = view.get<Position>(tgt.entity);
-            if (!tp) return;
-
-            float dx   = tp->x - pos.x;
-            float dy   = tp->y - pos.y;
-            float dist = std::sqrt(dx * dx + dy * dy);
-            if (dist > range.range) return;
-            if (cd.remaining > 0.0f) return;
-
-            s_hit_buffer.push_back({tgt.entity, dmg.damage});
-            ++s_attacks_this_tick;
-            cd.remaining = cd.interval;
         });
+
+    // Pass 2: emit hits for broadphase-validated pairs.
+    for (const auto& pair : s_melee_pairs) {
+        if (!view.alive(pair.attacker)) continue;
+        if (!view.alive(pair.defender)) continue;
+
+        auto* cd  = view.get<AttackCooldown>(pair.attacker);
+        auto* dmg = view.get<AttackDamage>(pair.attacker);
+        if (!cd || !dmg) continue;
+        if (cd->remaining > 0.0f) continue;
+
+        s_hit_buffer.push_back({pair.defender, dmg->damage});
+        cd->remaining = cd->interval;
+        ++s_attacks_this_tick;
+        ++s_melee_attacks;
+    }
     return count;
 }
 
