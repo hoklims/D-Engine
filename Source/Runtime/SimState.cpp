@@ -44,6 +44,7 @@ void SimState::bootstrap() {
     agents_with_target_ = 0;
     attacks_this_tick_  = 0;
     deaths_this_tick_   = 0;
+    targeting_candidates_scanned_ = 0;
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -60,6 +61,10 @@ void SimState::bootstrap() {
 }
 
 void SimState::bootstrap_crowd() {
+    bootstrap_crowd(CrowdConfig{});
+}
+
+void SimState::bootstrap_crowd(const CrowdConfig& cfg) {
     world = World{};
     tick_count_        = 0;
     system_count_      = 0;
@@ -69,31 +74,28 @@ void SimState::bootstrap_crowd() {
     agents_with_target_ = 0;
     attacks_this_tick_  = 0;
     deaths_this_tick_   = 0;
+    targeting_candidates_scanned_ = 0;
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
 
     register_crowd_systems();
 
-    constexpr int   agents_per_team = 10;
-    constexpr float team_spacing    = 20.0f;
-    constexpr float agent_spread    = 2.0f;
-
     for (int team = 0; team < 2; ++team) {
-        float base_x = (team == 0) ? -team_spacing : team_spacing;
-        for (int i = 0; i < agents_per_team; ++i) {
+        float base_x = (team == 0) ? -cfg.team_spacing : cfg.team_spacing;
+        for (int i = 0; i < cfg.agents_per_team; ++i) {
             EntityId e = world.create();
             world.set(e, CrowdAgent{});
             world.set(e, Team{static_cast<uint8_t>(team)});
-            world.set(e, Position{base_x, static_cast<float>(i) * agent_spread});
+            world.set(e, Position{base_x, static_cast<float>(i) * cfg.agent_spread});
             world.set(e, Velocity{0.0f, 0.0f});
-            world.set(e, MoveSpeed{3.0f});
+            world.set(e, MoveSpeed{cfg.move_speed});
             world.set(e, Target{});
             world.set(e, DesiredDirection{});
-            world.set(e, Health{100.0f, 100.0f});
-            world.set(e, AttackRange{2.0f});
-            world.set(e, AttackDamage{10.0f});
-            world.set(e, AttackCooldown{0.0f, 1.0f});
+            world.set(e, Health{cfg.health, cfg.health});
+            world.set(e, AttackRange{cfg.attack_range});
+            world.set(e, AttackDamage{cfg.attack_damage});
+            world.set(e, AttackCooldown{0.0f, cfg.attack_interval});
         }
     }
 
@@ -120,8 +122,9 @@ void SimState::tick(double step_dt) {
         last_stats_[i].entities_processed = n;
     }
 
-    attacks_this_tick_ = crowd_attacks_this_tick();
-    deaths_this_tick_  = crowd_deaths_queued_this_tick();
+    attacks_this_tick_              = crowd_attacks_this_tick();
+    deaths_this_tick_               = crowd_deaths_queued_this_tick();
+    targeting_candidates_scanned_   = crowd_candidates_scanned_this_tick();
 
     cmds_queued_last_ = cmds_.pending();
     cmds_.apply(world);
@@ -142,6 +145,7 @@ void SimState::shutdown() {
     agents_with_target_ = 0;
     attacks_this_tick_  = 0;
     deaths_this_tick_   = 0;
+    targeting_candidates_scanned_ = 0;
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -162,8 +166,9 @@ SimSnapshot SimState::snapshot() const {
     for (uint32_t i = 0; i < k_max_teams; ++i) {
         snap.team_counts[i] = team_counts_[i];
     }
-    snap.attacks_this_tick = attacks_this_tick_;
-    snap.deaths_this_tick  = deaths_this_tick_;
+    snap.attacks_this_tick              = attacks_this_tick_;
+    snap.deaths_this_tick               = deaths_this_tick_;
+    snap.targeting_candidates_scanned   = targeting_candidates_scanned_;
     return snap;
 }
 

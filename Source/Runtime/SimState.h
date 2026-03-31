@@ -37,6 +37,9 @@ struct SimSnapshot {
     // Combat metrics (this tick).
     uint32_t    attacks_this_tick  = 0;
     uint32_t    deaths_this_tick   = 0;
+
+    // Targeting telemetry (this tick).
+    uint32_t    targeting_candidates_scanned = 0;
 };
 
 // Signature for a fixed-step simulation system.
@@ -57,6 +60,18 @@ struct FixedSystem {
     FixedSystemFn fn                      = nullptr;
 };
 
+// Bootstrap configuration for crowd scenes.
+struct CrowdConfig {
+    int   agents_per_team = 10;
+    float team_spacing    = 20.0f;
+    float agent_spread    = 2.0f;
+    float move_speed      = 3.0f;
+    float health          = 100.0f;
+    float attack_range    = 2.0f;
+    float attack_damage   = 10.0f;
+    float attack_interval = 1.0f;
+};
+
 // Owns a World and runs an ordered pipeline of fixed systems each tick.
 //
 // Lifecycle contract:
@@ -75,6 +90,7 @@ struct SimState {
 
     void bootstrap();
     void bootstrap_crowd();
+    void bootstrap_crowd(const CrowdConfig& cfg);
     void tick(double step_dt);
     void shutdown();
 
@@ -97,6 +113,7 @@ private:
     uint32_t      team_counts_[k_max_teams] = {};
     uint32_t      attacks_this_tick_   = 0;
     uint32_t      deaths_this_tick_    = 0;
+    uint32_t      targeting_candidates_scanned_ = 0;
 
     void register_systems();
     void register_crowd_systems();

@@ -48,9 +48,10 @@ uint32_t resolve_damage(WorldView& view, float dt, CommandBuffer& cmds);
 // Queue CommandBuffer::destroy for agents whose health <= 0.
 uint32_t remove_dead(WorldView& view, float dt, CommandBuffer& cmds);
 
-// Per-tick combat counters (reset at the start of each system call).
+// Per-tick counters (reset at the start of each tick).
 uint32_t crowd_attacks_this_tick();
 uint32_t crowd_deaths_queued_this_tick();
+uint32_t crowd_candidates_scanned_this_tick();
 void     reset_crowd_tick_counters();
 
 }  // namespace de

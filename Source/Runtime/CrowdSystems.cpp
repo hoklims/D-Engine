@@ -1,6 +1,7 @@
 #include "Runtime/CrowdSystems.h"
 #include "Runtime/Components.h"
 #include "Runtime/CrowdComponents.h"
+#include "Runtime/SpatialGrid.h"
 
 #include <cfloat>
 #include <cmath>
@@ -16,12 +17,20 @@ struct HitEvent {
 };
 
 static std::vector<HitEvent> s_hit_buffer;
-static uint32_t s_attacks_this_tick = 0;
-static uint32_t s_deaths_this_tick  = 0;
+static SpatialGrid s_grid;
+static uint32_t s_attacks_this_tick      = 0;
+static uint32_t s_deaths_this_tick       = 0;
+static uint32_t s_candidates_scanned     = 0;
 
-uint32_t crowd_attacks_this_tick()       { return s_attacks_this_tick; }
-uint32_t crowd_deaths_queued_this_tick() { return s_deaths_this_tick; }
-void     reset_crowd_tick_counters()     { s_attacks_this_tick = 0; s_deaths_this_tick = 0; s_hit_buffer.clear(); }
+uint32_t crowd_attacks_this_tick()            { return s_attacks_this_tick; }
+uint32_t crowd_deaths_queued_this_tick()      { return s_deaths_this_tick; }
+uint32_t crowd_candidates_scanned_this_tick() { return s_candidates_scanned; }
+void     reset_crowd_tick_counters() {
+    s_attacks_this_tick  = 0;
+    s_deaths_this_tick   = 0;
+    s_candidates_scanned = 0;
+    s_hit_buffer.clear();
+}
 
 // -----------------------------------------------------------------------
 //  select_targets
@@ -30,6 +39,14 @@ void     reset_crowd_tick_counters()     { s_attacks_this_tick = 0; s_deaths_thi
 // Keeps the current target if it is still alive and still an enemy.
 
 uint32_t select_targets(WorldView& view, float /*dt*/, CommandBuffer& /*cmds*/) {
+    // Rebuild spatial grid from current positions.
+    s_grid.clear();
+    s_candidates_scanned = 0;
+    view.each<CrowdAgent, Team, Position>(
+        [](EntityId id, CrowdAgent&, Team& t, Position& p) {
+            s_grid.insert(id, t.id, p.x, p.y);
+        });
+
     uint32_t count = 0;
     view.each<CrowdAgent, Team, Position, Target>(
         [&](EntityId self, CrowdAgent&, Team& my_team,
@@ -42,28 +59,13 @@ uint32_t select_targets(WorldView& view, float /*dt*/, CommandBuffer& /*cmds*/) 
                 if (et && et->id != my_team.id) return;
             }
 
-            // Find nearest enemy.
-            float    best_d2 = FLT_MAX;
-            EntityId best    = {};
-            bool     found   = false;
-
-            view.each<CrowdAgent, Team, Position>(
-                [&](EntityId other, CrowdAgent&, Team& ot, Position& op) {
-                    if (other.index == self.index &&
-                        other.generation == self.generation) return;
-                    if (ot.id == my_team.id) return;
-                    float dx = op.x - my_pos.x;
-                    float dy = op.y - my_pos.y;
-                    float d2 = dx * dx + dy * dy;
-                    if (d2 < best_d2) {
-                        best_d2 = d2;
-                        best    = other;
-                        found   = true;
-                    }
-                });
-
-            tgt.entity     = best;
-            tgt.has_target = found;
+            // Find nearest enemy via spatial grid.
+            uint32_t checked = 0;
+            auto result = s_grid.find_nearest_enemy(
+                my_pos.x, my_pos.y, my_team.id, self, checked);
+            s_candidates_scanned += checked;
+            tgt.entity     = result.id;
+            tgt.has_target = result.found;
         });
     return count;
 }

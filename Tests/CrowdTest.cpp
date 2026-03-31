@@ -730,6 +730,102 @@ static void test_alive_at_start_acts_before_death() {
 }
 
 // =================================================================
+//  Grid: existing small-scene targeting unchanged
+// =================================================================
+
+static void test_grid_small_scene_regression() {
+    de::SimState sim;
+    sim.bootstrap_crowd();
+    sim.tick(1.0);
+
+    // Same checks as test_crowd_target_selection + test_crowd_target_is_enemy.
+    uint32_t with_target = 0;
+    bool all_enemy = true;
+    sim.world.each<de::CrowdAgent, de::Team, de::Target>(
+        [&](de::EntityId, de::CrowdAgent&, de::Team& my_team, de::Target& tgt) {
+            if (tgt.has_target) {
+                ++with_target;
+                auto* et = sim.world.get<de::Team>(tgt.entity);
+                if (!et || et->id == my_team.id) all_enemy = false;
+            }
+        });
+
+    check(with_target == 20,
+          "grid_regression: all 20 agents have target");
+    check(all_enemy,
+          "grid_regression: all targets are enemies");
+}
+
+// =================================================================
+//  Grid: controlled scene -- nearest enemy is correct
+// =================================================================
+
+static void test_grid_controlled_nearest() {
+    de::SimState sim;
+    sim.bootstrap_crowd();
+
+    // Move agent {0,1} (team 0) to origin.
+    // Move agent {10,1} (team 1) to (5, 0).
+    // Move agent {11,1} (team 1) to (100, 0) -- far away.
+    de::EntityId a  = {0, 1};
+    de::EntityId b  = {10, 1};
+    de::EntityId c  = {11, 1};
+    sim.world.get<de::Position>(a)->x = 0.0f;
+    sim.world.get<de::Position>(a)->y = 0.0f;
+    sim.world.get<de::Position>(b)->x = 5.0f;
+    sim.world.get<de::Position>(b)->y = 0.0f;
+    sim.world.get<de::Position>(c)->x = 100.0f;
+    sim.world.get<de::Position>(c)->y = 0.0f;
+
+    sim.tick(1.0);
+
+    // A should target B (closer) not C (farther).
+    auto* tgt = sim.world.get<de::Target>(a);
+    check(tgt && tgt->has_target && tgt->entity == b,
+          "grid_nearest: agent targets nearest enemy via grid");
+}
+
+// =================================================================
+//  Grid: large scene (2x100) correct and grid is faster
+// =================================================================
+
+static void test_grid_large_scene() {
+    de::CrowdConfig cfg;
+    cfg.agents_per_team = 100;
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+
+    check(sim.world.entity_count() == 200,
+          "grid_large: 200 agents created");
+
+    sim.tick(1.0);
+
+    de::SimSnapshot snap = sim.snapshot();
+    check(snap.crowd_agent_count == 200,
+          "grid_large: 200 crowd agents after tick");
+    check(snap.agents_with_target == 200,
+          "grid_large: all 200 have targets");
+
+    // All targets must be enemies.
+    bool all_enemy = true;
+    sim.world.each<de::CrowdAgent, de::Team, de::Target>(
+        [&](de::EntityId, de::CrowdAgent&, de::Team& my_team, de::Target& tgt) {
+            if (!tgt.has_target) { all_enemy = false; return; }
+            auto* et = sim.world.get<de::Team>(tgt.entity);
+            if (!et || et->id == my_team.id) all_enemy = false;
+        });
+    check(all_enemy, "grid_large: all targets are enemies");
+
+    // Key assertion: the grid scanned fewer candidates than brute-force.
+    // Brute-force would check 200 * 100 = 20000 enemy comparisons
+    // (each of 200 agents checks ~100 enemies in the inner loop).
+    uint32_t brute_force = 200 * 100;
+    check(snap.targeting_candidates_scanned < brute_force,
+          "grid_large: candidates scanned < brute-force total");
+}
+
+// =================================================================
 //  main
 // =================================================================
 
@@ -766,6 +862,11 @@ int main() {
     test_predead_no_move();
     test_predead_no_attack();
     test_alive_at_start_acts_before_death();
+
+    // Spatial grid tests
+    test_grid_small_scene_regression();
+    test_grid_controlled_nearest();
+    test_grid_large_scene();
 
     std::printf("\nCrowdTest results: %d passed, %d failed\n",
                 g_pass, g_fail);
