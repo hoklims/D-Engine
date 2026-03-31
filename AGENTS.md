@@ -1,14 +1,18 @@
-# D-Engine - Agent Notes
+# D-Engine 2.0 - Agent Notes
 
 Single source of truth for policies and roadmap:
 
-- `D-Engine_Handbook.md`
+- `D-Engine_2.0_Handbook.md`
 
-This file is intentionally small to avoid duplicating rules.
+Docs complementaires:
+
+- `Docs/2.0/INDEX.md`
+
+Les documents `v0.x` restent lisibles mais sont historiques sur cette branche.
 
 ## Quick commands
 
-Build (MSVC):
+Historique build/runtime actuel:
 
 - `msbuild D-Engine.sln /p:Configuration=Debug /p:Platform=x64 /m`
 - `msbuild D-Engine.sln /p:Configuration=Release /p:Platform=x64 /m`
@@ -26,3 +30,8 @@ Run smokes:
 Run benchmarks:
 
 - `x64\Release\D-Engine-BenchRunner.exe --warmup 1 --target-rsd 3 --max-repeat 20 --cpu-info`
+
+Regle de branche:
+
+- tout le travail 2.0 se fait sur `de-engine-2.0`
+- `main` sert d'etat historique et ne doit pas etre modifiee par ce chantier

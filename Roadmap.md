@@ -1,7 +1,8 @@
-# Roadmap (moved)
+# Roadmap
 
-The canonical roadmap is maintained in:
+La roadmap canonique de cette branche est maintenue dans:
 
-- `D-Engine_Handbook.md` -> section "Roadmap (two tracks: SDK stability + crowd slice)"
+- `D-Engine_2.0_Handbook.md` -> section `Roadmap de generation`
+- `Docs/2.0/Roadmap.md`
 
-This file is kept only for backwards compatibility with old links.
+Ce fichier reste volontairement court pour preserver les anciens liens.

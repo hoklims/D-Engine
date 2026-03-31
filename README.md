@@ -1,17 +1,27 @@
-# D-Engine
+# D-Engine 2.0
 
-Header-first C++ engine focused on contracts-first APIs and deterministic, auditable behavior.
+Nouvelle generation de D-Engine sur la branche `de-engine-2.0`.
+
+D-Engine 2.0 est un moteur from scratch, programmer-first, Windows-first,
+specialise dans les jeux d'action crowd-first de type Musou. Sa promesse n'est
+pas d'etre generaliste. Sa promesse est de tenir des foules denses, un combat
+lisible, un frame-time stable et une simulation reproductible.
 
 ## Quickstart
-- Open D-Engine.sln in Visual Studio 2022 (or run `msbuild D-Engine.sln /p:Configuration=Debug /p:Platform=x64`).
-- Build Debug or Release on x64 to run the smoke/build checks.
-- Run `x64\Debug\AllSmokes.exe` for standard smoke coverage and `x64\Debug\MemoryStressSmokes.exe` for aggressive memory stress coverage.
+
+- Cette branche ouvre le chantier 2.0 et son corpus de specs.
+- Le code existant reste disponible comme base historique.
+- Le travail de nouvelle generation part du handbook et des specs 2.0.
 
 ## Read next
-- Handbook (single source of truth): D-Engine_Handbook.md
-- Docs index (historical + pointers): Docs/INDEX.md
 
-## Historical milestone snapshots (can be stale)
+- Handbook 2.0: `D-Engine_2.0_Handbook.md`
+- Docs 2.0: `Docs/2.0/INDEX.md`
+- Docs index: `Docs/INDEX.md`
+
+## Historical docs
+
+- Handbook v0.x: `D-Engine_Handbook.md`
 - Docs/Progress_Summary_v0.1.md
 - Docs/Window_M0_Status.md
 - Docs/Renderer_M0_Status.md
@@ -22,7 +32,8 @@ Header-first C++ engine focused on contracts-first APIs and deterministic, audit
 - Docs/Audio_M0_Status.md
 
 ## Repository map
+
 - Source/Core/: contracts, foundations, null backends, and interop helpers
 - Source/Modules/: optional modules and examples
-- Docs/: historical milestone snapshots and backwards-compat pointers
+- Docs/: corpus 2.0 + documents historiques
 - tests/: smoke/build-only checks and header self-containment
