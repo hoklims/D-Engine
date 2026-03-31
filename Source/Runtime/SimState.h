@@ -15,6 +15,11 @@ struct SimSnapshot {
 
 // Minimal simulation state: owns a World, bootstraps test entities,
 // and runs a trivial Position += Velocity * dt system each tick.
+//
+// Lifecycle contract:
+//   bootstrap() is idempotent -- it always resets to a virgin state
+//   first (world cleared, tick_count zeroed), then spawns entities.
+//   Safe to call multiple times or after tick()/shutdown().
 struct SimState {
     World world;
 

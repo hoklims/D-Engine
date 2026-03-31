@@ -3,6 +3,10 @@
 namespace de {
 
 void SimState::bootstrap() {
+    // Always reset to virgin state first (idempotent).
+    world = World{};
+    tick_count_ = 0;
+
     // Spawn a handful of entities with Position + Velocity for testing.
     constexpr int count = 4;
     for (int i = 0; i < count; ++i) {

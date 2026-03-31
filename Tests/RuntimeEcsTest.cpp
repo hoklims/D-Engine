@@ -158,6 +158,95 @@ static void test_snapshot_updates() {
 }
 
 // -----------------------------------------------------------------
+//  Double bootstrap is idempotent (no accumulation)
+// -----------------------------------------------------------------
+static void test_double_bootstrap() {
+    de::SimState sim;
+    sim.bootstrap();
+    sim.bootstrap();  // second call must NOT accumulate
+
+    check(sim.world.entity_count() == 4,
+          "double_bootstrap: still 4 entities, not 8");
+
+    de::SimSnapshot snap = sim.snapshot();
+    check(snap.tick_count == 0,
+          "double_bootstrap: tick_count reset to 0");
+}
+
+// -----------------------------------------------------------------
+//  Bootstrap after ticks resets everything
+// -----------------------------------------------------------------
+static void test_bootstrap_after_ticks() {
+    de::SimState sim;
+    sim.bootstrap();
+    sim.tick(1.0);
+    sim.tick(1.0);
+
+    sim.bootstrap();  // must discard ticked state
+
+    de::SimSnapshot snap = sim.snapshot();
+    check(snap.entity_count == 4,
+          "bootstrap_after_ticks: entity_count == 4");
+    check(snap.tick_count == 0,
+          "bootstrap_after_ticks: tick_count == 0");
+
+    // Positions must be fresh (not accumulated from prior ticks)
+    float sum_x = 0.0f;
+    sim.world.each<de::Position>([&](de::EntityId, de::Position& p) {
+        sum_x += p.x;
+    });
+    // Fresh positions: 0 + 10 + 20 + 30 = 60
+    check(approx(sum_x, 60.0f),
+          "bootstrap_after_ticks: positions are fresh (sum_x == 60)");
+}
+
+// -----------------------------------------------------------------
+//  Bootstrap after shutdown
+// -----------------------------------------------------------------
+static void test_bootstrap_after_shutdown() {
+    de::SimState sim;
+    sim.bootstrap();
+    sim.tick(1.0);
+    sim.shutdown();
+    sim.bootstrap();
+
+    de::SimSnapshot snap = sim.snapshot();
+    check(snap.entity_count == 4,
+          "bootstrap_after_shutdown: entity_count == 4");
+    check(snap.tick_count == 0,
+          "bootstrap_after_shutdown: tick_count == 0");
+}
+
+// -----------------------------------------------------------------
+//  Snapshot coherence after re-bootstrap
+// -----------------------------------------------------------------
+static void test_snapshot_coherence_re_bootstrap() {
+    de::SimState sim;
+    sim.bootstrap();
+    sim.tick(1.0);
+    sim.tick(1.0);
+    sim.tick(1.0);
+
+    de::SimSnapshot before = sim.snapshot();
+    check(before.tick_count == 3,
+          "snapshot_coherence: 3 ticks before re-bootstrap");
+
+    sim.bootstrap();
+
+    de::SimSnapshot after = sim.snapshot();
+    check(after.entity_count == 4,
+          "snapshot_coherence: 4 entities after re-bootstrap");
+    check(after.tick_count == 0,
+          "snapshot_coherence: tick_count 0 after re-bootstrap");
+
+    // One tick on fresh state
+    sim.tick(1.0);
+    de::SimSnapshot post_tick = sim.snapshot();
+    check(post_tick.tick_count == 1,
+          "snapshot_coherence: tick_count 1 after one fresh tick");
+}
+
+// -----------------------------------------------------------------
 //  main
 // -----------------------------------------------------------------
 int main() {
@@ -167,6 +256,12 @@ int main() {
     test_fractional_dt();
     test_shutdown();
     test_snapshot_updates();
+
+    // Bootstrap lifecycle
+    test_double_bootstrap();
+    test_bootstrap_after_ticks();
+    test_bootstrap_after_shutdown();
+    test_snapshot_coherence_re_bootstrap();
 
     std::printf("\nRuntimeEcsTest results: %d passed, %d failed\n",
                 g_pass, g_fail);

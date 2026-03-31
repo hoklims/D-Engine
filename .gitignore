@@ -107,3 +107,6 @@ Researches/
 
 # CodeQL temporary file
 _codeql_detected_source_root
+
+# Fastembed local cache
+.fastembed_cache/
