@@ -458,10 +458,35 @@ const SimBudgetStatus& SimState::budget_status() const {
 
 void SimState::set_budget_response_config(const SimBudgetResponseConfig& cfg) {
     budget_response_config_ = cfg;
+    normalize_budget_response_state();
 }
 
 const SimBudgetResponseState& SimState::budget_response_state() const {
     return budget_response_state_;
+}
+
+void SimState::normalize_budget_response_state() {
+    auto& st = budget_response_state_;
+
+    // Disabled or max_pressure==0: full reset.
+    if (!budget_response_config_.enabled ||
+        budget_response_config_.max_pressure == 0) {
+        st = SimBudgetResponseState{};
+        return;
+    }
+
+    // Clamp pressure to new max_pressure (handles hot-lower).
+    if (st.pressure_level > budget_response_config_.max_pressure) {
+        st.pressure_level = budget_response_config_.max_pressure;
+    }
+
+    // Recompute derived fields from (potentially clamped) pressure.
+    st.lod_distance_scale = 1.0f -
+        static_cast<float>(st.pressure_level) *
+        budget_response_config_.shrink_per_level;
+    if (st.lod_distance_scale < 0.05f) st.lod_distance_scale = 0.05f;
+
+    st.active = (st.pressure_level > 0);
 }
 
 void SimState::apply_budget_response() {

@@ -60,8 +60,10 @@ struct SimBudgetResponseConfig {
 // The state that was actually APPLIED during tick N is captured separately
 // in SimSnapshot (applied_* fields) at tick start.
 //
-// When the response is disabled mid-run, this state is immediately reset
-// to neutral (pressure 0, scale 1.0, active false).
+// Immediately normalized by set_budget_response_config():
+//   - disabled or max_pressure==0 -> full reset to neutral
+//   - max_pressure lowered -> pressure clamped, scale recomputed
+// No stale state is ever visible via budget_response_state() or snapshot().
 struct SimBudgetResponseState {
     uint8_t  pressure_level      = 0;     // 0 = no degradation, max = config.max_pressure
     uint32_t consecutive_healthy = 0;     // ticks since last violation
@@ -239,6 +241,11 @@ struct SimState {
     void set_budget_config(const SimBudgetConfig& cfg);
     const SimBudgetStatus& budget_status() const;
 
+    // Reconfigure budget response policy.  Immediately normalizes state:
+    //   enabled=false or max_pressure=0 -> full state reset
+    //   max_pressure lowered below current pressure -> clamp + recompute
+    // State is coherent in budget_response_state() and snapshot() right
+    // after this call, without waiting for the next tick.
     void set_budget_response_config(const SimBudgetResponseConfig& cfg);
     const SimBudgetResponseState& budget_response_state() const;
 
@@ -298,6 +305,7 @@ private:
     void build_nav_fields();
     void evaluate_budget(double tick_wall_s);
     void apply_budget_response();
+    void normalize_budget_response_state();
 };
 
 // Run a bootstrapped SimState for N ticks, collecting the hash after each.

@@ -547,6 +547,200 @@ static void test_hot_disable_max_pressure_zero() {
           "disable_maxp0: raw state pressure is 0");
 }
 
+// =================================================================
+//  Hot-disable without tick: state clean immediately
+// =================================================================
+
+static void test_hot_disable_immediate_no_tick() {
+    de::CrowdConfig cfg{};
+    cfg.agents_per_team = 10;
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+    sim.set_budget_config(always_over_budget());
+
+    de::SimBudgetResponseConfig resp{};
+    resp.enabled = true;
+    sim.set_budget_response_config(resp);
+
+    // Build pressure.
+    for (int i = 0; i < 4; ++i) sim.tick(1.0 / 60.0);
+    check(sim.budget_response_state().pressure_level == 4,
+          "imm_disable: pressure built up to 4");
+
+    // Disable -- no tick after this.
+    resp.enabled = false;
+    sim.set_budget_response_config(resp);
+
+    // Raw accessor must be clean immediately.
+    check(sim.budget_response_state().pressure_level == 0,
+          "imm_disable: raw pressure is 0 immediately");
+    check(!sim.budget_response_state().active,
+          "imm_disable: raw active is false immediately");
+    check(sim.budget_response_state().lod_distance_scale == 1.0f,
+          "imm_disable: raw lod_scale is 1.0 immediately");
+
+    // Snapshot must also be clean (pending fields).
+    auto snap = sim.snapshot();
+    check(snap.budget_response_pending_pressure == 0,
+          "imm_disable: snap pending pressure is 0 immediately");
+    check(snap.budget_response_pending_lod_scale == 1.0f,
+          "imm_disable: snap pending lod_scale is 1.0 immediately");
+}
+
+// =================================================================
+//  Hot-lower max_pressure clamps pressure immediately
+// =================================================================
+
+static void test_hot_lower_max_pressure_clamps() {
+    de::CrowdConfig cfg{};
+    cfg.agents_per_team = 10;
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+    sim.set_budget_config(always_over_budget());
+
+    de::SimBudgetResponseConfig resp{};
+    resp.enabled          = true;
+    resp.max_pressure     = 4;
+    resp.shrink_per_level = 0.20f;
+    sim.set_budget_response_config(resp);
+
+    // Build pressure to 4.
+    for (int i = 0; i < 4; ++i) sim.tick(1.0 / 60.0);
+    check(sim.budget_response_state().pressure_level == 4,
+          "hot_lower: pressure built up to 4");
+
+    // Lower max_pressure to 2 -- no tick after this.
+    resp.max_pressure = 2;
+    sim.set_budget_response_config(resp);
+
+    // Pressure must be clamped to 2 immediately.
+    check(sim.budget_response_state().pressure_level == 2,
+          "hot_lower: pressure clamped to 2 immediately");
+    check(sim.budget_response_state().active,
+          "hot_lower: still active at pressure 2");
+
+    // Scale must be recomputed: 1.0 - 2*0.20 = 0.60.
+    check(sim.budget_response_state().lod_distance_scale == 0.6f,
+          "hot_lower: lod_scale recomputed to 0.6 immediately");
+
+    // Snapshot coherent without tick.
+    auto snap = sim.snapshot();
+    check(snap.budget_response_pending_pressure == 2,
+          "hot_lower: snap pending pressure is 2");
+    check(snap.budget_response_pending_lod_scale == 0.6f,
+          "hot_lower: snap pending lod_scale is 0.6");
+}
+
+// =================================================================
+//  Hot-lower max_pressure to 0 is full reset
+// =================================================================
+
+static void test_hot_lower_max_pressure_to_zero() {
+    de::CrowdConfig cfg{};
+    cfg.agents_per_team = 10;
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+    sim.set_budget_config(always_over_budget());
+
+    de::SimBudgetResponseConfig resp{};
+    resp.enabled = true;
+    sim.set_budget_response_config(resp);
+
+    for (int i = 0; i < 3; ++i) sim.tick(1.0 / 60.0);
+    check(sim.budget_response_state().pressure_level == 3,
+          "lower_to_0: pressure built up to 3");
+
+    // Lower to 0 -- no tick after.
+    resp.max_pressure = 0;
+    sim.set_budget_response_config(resp);
+
+    check(sim.budget_response_state().pressure_level == 0,
+          "lower_to_0: pressure reset to 0 immediately");
+    check(!sim.budget_response_state().active,
+          "lower_to_0: not active immediately");
+    check(sim.budget_response_state().lod_distance_scale == 1.0f,
+          "lower_to_0: lod_scale is 1.0 immediately");
+}
+
+// =================================================================
+//  Hot-raise max_pressure does not change current pressure
+// =================================================================
+
+static void test_hot_raise_max_pressure_no_change() {
+    de::CrowdConfig cfg{};
+    cfg.agents_per_team = 10;
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+    sim.set_budget_config(always_over_budget());
+
+    de::SimBudgetResponseConfig resp{};
+    resp.enabled          = true;
+    resp.max_pressure     = 2;
+    resp.shrink_per_level = 0.20f;
+    sim.set_budget_response_config(resp);
+
+    // Build pressure to cap at 2.
+    for (int i = 0; i < 5; ++i) sim.tick(1.0 / 60.0);
+    check(sim.budget_response_state().pressure_level == 2,
+          "hot_raise: pressure capped at 2");
+
+    // Raise max_pressure to 6 -- pressure must stay at 2 (no inflation).
+    resp.max_pressure = 6;
+    sim.set_budget_response_config(resp);
+
+    check(sim.budget_response_state().pressure_level == 2,
+          "hot_raise: pressure stays at 2 after raising cap");
+    check(sim.budget_response_state().lod_distance_scale == 0.6f,
+          "hot_raise: lod_scale unchanged at 0.6");
+}
+
+// =================================================================
+//  Snapshot after hot-lower then tick: applied reflects clamped value
+// =================================================================
+
+static void test_hot_lower_then_tick_applied_coherent() {
+    de::CrowdConfig cfg{};
+    cfg.agents_per_team = 10;
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+    sim.set_budget_config(always_over_budget());
+
+    de::SimBudgetResponseConfig resp{};
+    resp.enabled          = true;
+    resp.max_pressure     = 4;
+    resp.shrink_per_level = 0.20f;
+    sim.set_budget_response_config(resp);
+
+    // Build pressure to 4.
+    for (int i = 0; i < 4; ++i) sim.tick(1.0 / 60.0);
+
+    // Lower max to 1 -- clamps to 1, scale = 0.8.
+    resp.max_pressure = 1;
+    sim.set_budget_response_config(resp);
+    check(sim.budget_response_state().pressure_level == 1,
+          "lower_tick: clamped to 1 before tick");
+
+    // Next tick: applied should reflect pressure 1.
+    sim.tick(1.0 / 60.0);
+    auto snap = sim.snapshot();
+
+    check(snap.budget_response_applied_pressure == 1,
+          "lower_tick: applied pressure is 1");
+    check(snap.budget_response_applied_active,
+          "lower_tick: applied is active");
+    check(snap.budget_response_applied_lod_scale == 0.8f,
+          "lower_tick: applied lod_scale is 0.8 (1 - 1*0.2)");
+
+    // Pending stays at 1 (already capped, budget still over).
+    check(snap.budget_response_pending_pressure == 1,
+          "lower_tick: pending pressure stays at 1 (capped)");
+}
+
 int main() {
     test_under_budget_no_degradation();
     test_over_budget_activates();
@@ -563,6 +757,11 @@ int main() {
     test_applied_coherent_second_tick();
     test_hot_disable_clears_state();
     test_hot_disable_max_pressure_zero();
+    test_hot_disable_immediate_no_tick();
+    test_hot_lower_max_pressure_clamps();
+    test_hot_lower_max_pressure_to_zero();
+    test_hot_raise_max_pressure_no_change();
+    test_hot_lower_then_tick_applied_coherent();
 
     std::printf("\nBudgetResponseTest: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail > 0 ? 1 : 0;
