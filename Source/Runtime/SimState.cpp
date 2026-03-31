@@ -58,6 +58,7 @@ void SimState::bootstrap() {
     melee_pairs_this_tick_       = 0;
     melee_attacks_this_tick_     = 0;
     lod_config_                  = BehaviorLodConfig{};
+    hash_history_.clear();
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -101,6 +102,7 @@ void SimState::bootstrap_crowd(const CrowdConfig& cfg) {
     melee_pairs_this_tick_       = 0;
     melee_attacks_this_tick_     = 0;
     lod_config_                  = BehaviorLodConfig{};
+    hash_history_.clear();
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -236,6 +238,10 @@ void SimState::tick(double step_dt) {
 
     update_crowd_stats();
 
+    // Compute deterministic simulation hash on post-apply world state.
+    uint64_t hash = compute_sim_hash(world, tick_count_);
+    hash_history_.push(hash);
+
     ++tick_count_;
 }
 
@@ -263,6 +269,7 @@ void SimState::shutdown() {
     melee_pairs_this_tick_       = 0;
     melee_attacks_this_tick_     = 0;
     lod_config_                  = BehaviorLodConfig{};
+    hash_history_.clear();
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -278,6 +285,7 @@ SimSnapshot SimState::snapshot() const {
     for (uint32_t i = 0; i < system_count_; ++i) {
         snap.systems[i] = last_stats_[i];
     }
+    snap.sim_hash           = hash_history_.latest;
     snap.crowd_agent_count  = crowd_agent_count_;
     snap.agents_with_target = agents_with_target_;
     for (uint32_t i = 0; i < k_max_teams; ++i) {
@@ -301,6 +309,14 @@ SimSnapshot SimState::snapshot() const {
 
 uint32_t SimState::system_count() const {
     return system_count_;
+}
+
+uint64_t SimState::sim_hash() const {
+    return hash_history_.latest;
+}
+
+const SimHashHistory& SimState::hash_history() const {
+    return hash_history_;
 }
 
 void SimState::register_systems() {

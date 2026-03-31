@@ -6,6 +6,7 @@
 #include "Runtime/Components.h"
 #include "Runtime/BattlefieldGrid.h"
 #include "Runtime/CrowdComponents.h"
+#include "Runtime/SimHash.h"
 
 #include <cstdint>
 
@@ -30,6 +31,9 @@ struct SimSnapshot {
     uint32_t    cmds_queued   = 0;
     uint32_t    cmds_applied  = 0;
     SystemStats systems[k_max_sim_systems] = {};
+
+    // Simulation hash (computed at end of tick, before tick_count increment).
+    uint64_t    sim_hash           = 0;
 
     // Crowd metrics.
     uint32_t    crowd_agent_count  = 0;
@@ -144,6 +148,9 @@ struct SimState {
     SimSnapshot snapshot() const;
     uint32_t    system_count() const;
 
+    uint64_t              sim_hash() const;
+    const SimHashHistory& hash_history() const;
+
 private:
     uint64_t      tick_count_            = 0;
     uint32_t      system_count_          = 0;
@@ -175,6 +182,7 @@ private:
     uint32_t      melee_pairs_this_tick_     = 0;
     uint32_t      melee_attacks_this_tick_   = 0;
     BehaviorLodConfig lod_config_;
+    SimHashHistory    hash_history_;
 
     void register_systems();
     void register_crowd_systems();
@@ -182,5 +190,16 @@ private:
     void cull_pre_dead();
     void build_nav_fields();
 };
+
+// Run a bootstrapped SimState for N ticks, collecting the hash after each.
+inline HashSequence run_and_collect(SimState& sim, uint32_t ticks, double dt) {
+    HashSequence seq;
+    seq.hashes.reserve(ticks);
+    for (uint32_t i = 0; i < ticks; ++i) {
+        sim.tick(dt);
+        seq.hashes.push_back(sim.sim_hash());
+    }
+    return seq;
+}
 
 }  // namespace de

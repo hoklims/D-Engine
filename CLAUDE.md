@@ -41,7 +41,7 @@ cmake --build Build --config Debug --target EcsTest && ./Build/Tests/Debug/EcsTe
 ./Build/Source/Debug/DEngine.exe
 ```
 
-Tests disponibles : `FixedStepTest`, `TimelineTest`, `TelemetryTest`, `EcsTest`, `RuntimeEcsTest`, `CrowdTest`.
+Tests disponibles : `FixedStepTest`, `TimelineTest`, `TelemetryTest`, `EcsTest`, `RuntimeEcsTest`, `CrowdTest`, `NavTest`, `LodTest`, `MeleeTest`, `SimHashTest`.
 
 ## Conventions code
 - `/W4 /WX /permissive-` -- zero warnings obligatoire
@@ -93,22 +93,30 @@ ECS archetypal avec stockage SoA (Structure of Arrays). Aucune dependance Win32.
 4. CommandBuffer::apply()
 5. Incrementer tick_count
 
-**Pipeline crowd (CrowdSystems) -- 9 etapes ordonnees** :
-1. `select_targets` -- scan spatial grid, find_nearest_enemy -> Target
-2. `compute_battle_goal` -- DesiredDirection vers BattleGoal strategique
-3. `compute_desired_movement` -- si ennemi dans EngageRadius, override direction vers ennemi
-4. `apply_crowd_steering` -- Velocity = DesiredDirection * MoveSpeed
-5. `apply_separation` -- repulsion soft des allies proches (anti-stacking)
-6. `attack_targets` -- tick cooldown, emit hit events si in range
-7. `resolve_damage` -- applique tous les degats simultanement (atomique)
-8. `remove_dead` -- queue destroy pour Health <= 0
-9. `integrate_velocity` + `integrate_position` -- physique
+**Pipeline crowd (CrowdSystems) -- 12 etapes ordonnees** :
+1. `classify_behavior_lod` -- tier 0-3 par distance au battle center + engagement
+2. `select_targets` -- scan spatial grid, find_nearest_enemy -> Target
+3. `compute_battle_goal` -- direction via flow field (BattlefieldGrid) ou direct vers BattleGoal
+4. `compute_desired_movement` -- si ennemi dans EngageRadius, override direction vers ennemi
+5. `apply_crowd_steering` -- Velocity = DesiredDirection * MoveSpeed
+6. `apply_separation` -- repulsion soft des allies proches (anti-stacking)
+7. `gather_melee_candidates` -- broadphase spatial: paires attaquant-cible validees
+8. `attack_targets` -- tick cooldown, emit 1 hit max par agent si broadphase confirme
+9. `resolve_damage` -- applique tous les degats simultanement (atomique)
+10. `remove_dead` -- queue destroy pour Health <= 0
+11. `integrate_velocity` -- physique
+12. `integrate_position` -- physique
 
 **SpatialGrid** : grille de hash 2D pour la selection de cibles. Recherche par anneau expansif (Chebyshev) avec early exit. Reconstruite a chaque tick.
 
+**BattlefieldGrid** : grille statique 2D avec champ d'integration BFS. Cellules FREE/BLOCKED. Les agents echantillonnent une direction de flux au lieu de pointer directement vers le BattleGoal. Contrat : si sample_flow() echoue, direction ZERO (pas de fallback line-of-sight).
+
+**BehaviorLod** : systeme de LOD comportemental a 4 tiers (T0=chaque tick, T1=1/2, T2=1/4, T3=1/8). Les agents engages sont toujours T0. Classification par distance au battle center explicite. Combat + physique toujours full fidelity, seuls navigation/separation sont gates.
+
 **Composants** :
 - Core : `Position`, `Velocity`, `Acceleration`
-- Crowd : `CrowdAgent` (tag), `Team`, `MoveSpeed`, `Target`, `DesiredDirection`, `Health`, `AttackRange`, `AttackDamage`, `AttackCooldown`, `BattleGoal`, `EngageRadius`, `Separation`
+- Crowd : `CrowdAgent` (tag), `Team`, `MoveSpeed`, `Target`, `DesiredDirection`, `Health`, `AttackRange`, `AttackDamage`, `AttackCooldown`, `BattleGoal`, `EngageRadius`, `Separation`, `BehaviorLod`
+- Config : `BehaviorLodConfig` (seuils LOD + battle center)
 
 ### Platform (Source/Platform/)
 

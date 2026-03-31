@@ -69,3 +69,12 @@ add_executable(MeleeTest
 target_link_libraries(MeleeTest PRIVATE DEcs)
 target_include_directories(MeleeTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
 add_test(NAME MeleeTest COMMAND MeleeTest)
+
+add_executable(SimHashTest
+    SimHashTest.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/SimState.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/CrowdSystems.cpp
+)
+target_link_libraries(SimHashTest PRIVATE DEcs)
+target_include_directories(SimHashTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
+add_test(NAME SimHashTest COMMAND SimHashTest)
