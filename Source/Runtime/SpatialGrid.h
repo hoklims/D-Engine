@@ -34,10 +34,25 @@ struct SpatialGrid {
 
     float cell_size = 10.0f;
 
-    void clear() { cells_.clear(); }
+    void clear() {
+        cells_.clear();
+        has_bounds_ = false;
+    }
 
     void insert(EntityId id, uint8_t team, float x, float y) {
-        cells_[make_key(to_cell(x), to_cell(y))].push_back({id, team, x, y});
+        int32_t cx = to_cell(x);
+        int32_t cy = to_cell(y);
+        cells_[make_key(cx, cy)].push_back({id, team, x, y});
+        if (!has_bounds_) {
+            min_cx_ = max_cx_ = cx;
+            min_cy_ = max_cy_ = cy;
+            has_bounds_ = true;
+        } else {
+            if (cx < min_cx_) min_cx_ = cx;
+            if (cx > max_cx_) max_cx_ = cx;
+            if (cy < min_cy_) min_cy_ = cy;
+            if (cy > max_cy_) max_cy_ = cy;
+        }
     }
 
     // Find the nearest agent on a different team.
@@ -54,30 +69,48 @@ struct SpatialGrid {
         EntityId best    = {};
         bool     found   = false;
 
-        for (int32_t ring = 0; ring <= 200; ++ring) {
-            // Visit only cells on the border of this ring.
-            for (int32_t dx = -ring; dx <= ring; ++dx) {
-                for (int32_t dy = -ring; dy <= ring; ++dy) {
-                    if (ring > 0 &&
-                        std::abs(dx) < ring && std::abs(dy) < ring)
-                        continue;
+        // Compute the maximum ring needed to cover all occupied cells.
+        // Chebyshev distance from query cell to the farthest occupied cell.
+        int32_t max_ring = 0;
+        if (has_bounds_) {
+            int32_t d0 = std::max(std::abs(cx - min_cx_),
+                                  std::abs(cx - max_cx_));
+            int32_t d1 = std::max(std::abs(cy - min_cy_),
+                                  std::abs(cy - max_cy_));
+            max_ring = std::max(d0, d1);
+        }
 
-                    auto it = cells_.find(make_key(cx + dx, cy + dy));
-                    if (it == cells_.end()) continue;
+        // Helper: scan one cell and update best.
+        auto scan_cell = [&](int32_t gx, int32_t gy) {
+            auto it = cells_.find(make_key(gx, gy));
+            if (it == cells_.end()) return;
+            for (const auto& e : it->second) {
+                if (e.id == self) continue;
+                if (e.team == my_team) continue;
+                ++candidates_checked;
+                float ddx = e.x - x;
+                float ddy = e.y - y;
+                float d2  = ddx * ddx + ddy * ddy;
+                if (!found || d2 < best_d2) {
+                    best_d2 = d2;
+                    best    = e.id;
+                    found   = true;
+                }
+            }
+        };
 
-                    for (const auto& e : it->second) {
-                        if (e.id == self) continue;
-                        if (e.team == my_team) continue;
-                        ++candidates_checked;
-                        float ddx = e.x - x;
-                        float ddy = e.y - y;
-                        float d2  = ddx * ddx + ddy * ddy;
-                        if (!found || d2 < best_d2) {
-                            best_d2 = d2;
-                            best    = e.id;
-                            found   = true;
-                        }
-                    }
+        for (int32_t ring = 0; ring <= max_ring; ++ring) {
+            if (ring == 0) {
+                scan_cell(cx, cy);
+            } else {
+                // Iterate the 4 sides of the ring border directly.
+                for (int32_t d = -ring; d <= ring; ++d) {
+                    scan_cell(cx + d, cy - ring);  // top row
+                    scan_cell(cx + d, cy + ring);  // bottom row
+                }
+                for (int32_t d = -ring + 1; d <= ring - 1; ++d) {
+                    scan_cell(cx - ring, cy + d);  // left column
+                    scan_cell(cx + ring, cy + d);  // right column
                 }
             }
 
@@ -96,6 +129,9 @@ struct SpatialGrid {
 
 private:
     std::unordered_map<int64_t, std::vector<Entry>> cells_;
+    int32_t min_cx_ = 0, max_cx_ = 0;
+    int32_t min_cy_ = 0, max_cy_ = 0;
+    bool    has_bounds_ = false;
 
     int32_t to_cell(float v) const {
         return static_cast<int32_t>(std::floor(v / cell_size));

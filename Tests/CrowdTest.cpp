@@ -1,5 +1,6 @@
 #include "Runtime/SimState.h"
 #include "Runtime/CrowdComponents.h"
+#include "Runtime/SpatialGrid.h"
 
 #include <cmath>
 #include <cstdio>
@@ -826,6 +827,54 @@ static void test_grid_large_scene() {
 }
 
 // =================================================================
+//  Grid: huge spacing -- enemy beyond old 200-ring cap
+// =================================================================
+
+static void test_grid_huge_spacing_finds_enemy() {
+    // team_spacing = 5000 => teams at x=-5000 and x=+5000
+    // With cell_size=10, that is 1000 cells apart -- well past the old
+    // ring<=200 hard cap.
+    de::CrowdConfig cfg;
+    cfg.agents_per_team = 1;
+    cfg.team_spacing    = 5000.0f;
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+    sim.tick(1.0);
+
+    de::SimSnapshot snap = sim.snapshot();
+    check(snap.crowd_agent_count == 2,
+          "grid_huge: 2 agents alive");
+    check(snap.agents_with_target == 2,
+          "grid_huge: both agents have target (no false negative)");
+}
+
+// =================================================================
+//  Grid: unit-level API -- SpatialGrid alone, huge distance
+// =================================================================
+
+static void test_grid_huge_spacing_unit_api() {
+    de::SpatialGrid grid;
+    grid.cell_size = 10.0f;
+
+    de::EntityId a = {0, 1};
+    de::EntityId b = {1, 1};
+
+    // Place two enemies 50000 units apart (5000 cells).
+    grid.insert(a, 0, -25000.0f, 0.0f);
+    grid.insert(b, 1,  25000.0f, 0.0f);
+
+    uint32_t checked = 0;
+    auto r = grid.find_nearest_enemy(-25000.0f, 0.0f, 0, a, checked);
+    check(r.found,
+          "grid_unit_huge: found enemy at 50000 units");
+    check(r.id == b,
+          "grid_unit_huge: correct enemy id");
+    check(checked == 1,
+          "grid_unit_huge: exactly 1 candidate checked");
+}
+
+// =================================================================
 //  main
 // =================================================================
 
@@ -867,6 +916,8 @@ int main() {
     test_grid_small_scene_regression();
     test_grid_controlled_nearest();
     test_grid_large_scene();
+    test_grid_huge_spacing_finds_enemy();
+    test_grid_huge_spacing_unit_api();
 
     std::printf("\nCrowdTest results: %d passed, %d failed\n",
                 g_pass, g_fail);
