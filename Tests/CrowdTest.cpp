@@ -625,6 +625,111 @@ static void test_contract_snapshot_coherent_after_deaths() {
 }
 
 // =================================================================
+//  Pre-dead agent does not select a target
+// =================================================================
+
+static void test_predead_no_target() {
+    de::SimState sim;
+    sim.bootstrap_crowd();
+
+    de::EntityId a = {0, 1};   // team 0, will be pre-dead
+    sim.world.get<de::Health>(a)->current = 0.0f;
+
+    sim.tick(1.0);
+
+    // A was culled before SelectTargets ran.
+    check(!sim.world.alive(a),
+          "predead_no_target: dead agent destroyed before systems");
+    check(sim.world.entity_count() == 19,
+          "predead_no_target: entity count == 19");
+}
+
+// =================================================================
+//  Pre-dead agent does not move
+// =================================================================
+
+static void test_predead_no_move() {
+    de::SimState sim;
+    sim.bootstrap_crowd();
+
+    de::EntityId a = {0, 1};
+    sim.world.get<de::Health>(a)->current = -5.0f;
+    sim.world.get<de::Velocity>(a)->dx = 99.0f;  // would move a lot
+
+    sim.tick(1.0);
+
+    // A is gone -- it never reached IntegratePosition.
+    check(!sim.world.alive(a),
+          "predead_no_move: dead agent destroyed before movement");
+    // All other 19 agents are unaffected.
+    check(sim.world.entity_count() == 19,
+          "predead_no_move: 19 entities remain");
+}
+
+// =================================================================
+//  Pre-dead agent does not produce attacks
+// =================================================================
+
+static void test_predead_no_attack() {
+    de::SimState sim;
+    sim.bootstrap_crowd();
+
+    de::EntityId a = {0, 1};   // team 0, pre-dead
+    de::EntityId b = {10, 1};  // team 1, potential victim
+    // Place within attack range.
+    sim.world.get<de::Position>(a)->x = 0.0f;
+    sim.world.get<de::Position>(a)->y = 0.0f;
+    sim.world.get<de::Position>(b)->x = 1.5f;
+    sim.world.get<de::Position>(b)->y = 0.0f;
+    // A is already dead.
+    sim.world.get<de::Health>(a)->current = 0.0f;
+    // B does not attack back (isolate test).
+    sim.world.get<de::AttackCooldown>(b)->remaining = 100.0f;
+    sim.world.get<de::AttackCooldown>(b)->interval = 100.0f;
+
+    sim.tick(1.0);
+
+    check(!sim.world.alive(a),
+          "predead_no_attack: dead agent destroyed");
+    auto* hp_b = sim.world.get<de::Health>(b);
+    check(hp_b && approx(hp_b->current, 100.0f),
+          "predead_no_attack: victim HP unchanged (dead agent did not attack)");
+}
+
+// =================================================================
+//  Agent alive at tick start can still act even if killed this tick
+// =================================================================
+
+static void test_alive_at_start_acts_before_death() {
+    de::SimState sim;
+    sim.bootstrap_crowd();
+
+    de::EntityId a = {0, 1};   // team 0
+    de::EntityId b = {10, 1};  // team 1
+    sim.world.get<de::Position>(a)->x = 0.0f;
+    sim.world.get<de::Position>(a)->y = 0.0f;
+    sim.world.get<de::Position>(b)->x = 1.0f;
+    sim.world.get<de::Position>(b)->y = 0.0f;
+    // Both have 10 HP, both deal 10 damage => mutual kill.
+    sim.world.get<de::Health>(a)->current = 10.0f;
+    sim.world.get<de::Health>(b)->current = 10.0f;
+
+    sim.tick(1.0);
+
+    // Both were alive at tick start (HP > 0) => both acted.
+    // Simultaneous damage: both took 10 damage => HP 0 => both dead.
+    check(!sim.world.alive(a),
+          "alive_acts: A died (killed by B this tick)");
+    check(!sim.world.alive(b),
+          "alive_acts: B died (killed by A this tick)");
+
+    // Key assertion: both attacked, proving A acted even though B killed it.
+    de::SimSnapshot snap = sim.snapshot();
+    check(snap.attacks_this_tick >= 2,
+          "alive_acts: both agents attacked (simultaneous contract)");
+}
+
+// =================================================================
 //  main
 // =================================================================
 
@@ -655,6 +760,12 @@ int main() {
     test_contract_simultaneous_lethal();
     test_contract_damage_order_independent();
     test_contract_snapshot_coherent_after_deaths();
+
+    // Alive-at-tick-start contract tests
+    test_predead_no_target();
+    test_predead_no_move();
+    test_predead_no_attack();
+    test_alive_at_start_acts_before_death();
 
     std::printf("\nCrowdTest results: %d passed, %d failed\n",
                 g_pass, g_fail);

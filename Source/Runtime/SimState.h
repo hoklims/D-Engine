@@ -101,6 +101,7 @@ private:
     void register_systems();
     void register_crowd_systems();
     void update_crowd_stats();
+    void cull_pre_dead();
 };
 
 }  // namespace de

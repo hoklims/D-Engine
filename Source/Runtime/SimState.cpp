@@ -101,6 +101,8 @@ void SimState::bootstrap_crowd() {
 }
 
 void SimState::tick(double step_dt) {
+    cull_pre_dead();
+
     float dt = static_cast<float>(step_dt);
     cmds_.clear();
     reset_crowd_tick_counters();
@@ -197,6 +199,18 @@ void SimState::update_crowd_stats() {
             if (tgt.has_target && world.alive(tgt.entity))
                 ++agents_with_target_;
         });
+}
+
+void SimState::cull_pre_dead() {
+    // Destroy agents that entered this tick with HP <= 0.
+    // Runs before any system so dead agents never act.
+    // Uses direct World::destroy (not CommandBuffer) because the
+    // CommandBuffer is only applied at end of tick.
+    std::vector<EntityId> dead;
+    world.each<CrowdAgent, Health>([&](EntityId id, CrowdAgent&, Health& hp) {
+        if (hp.current <= 0.0f) dead.push_back(id);
+    });
+    for (auto id : dead) world.destroy(id);
 }
 
 void SimState::add_system(const char* name, FixedSystemFn fn) {

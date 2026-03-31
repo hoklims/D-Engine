@@ -7,7 +7,12 @@
 
 namespace de {
 
-// Crowd combat contract -- simultaneous damage resolution
+// Crowd combat contract -- alive-at-tick-start + simultaneous damage
+//
+// Tick entry:
+//   SimState::tick() calls cull_pre_dead() BEFORE any system runs.
+//   Agents with Health <= 0 at tick start are destroyed immediately
+//   (direct World::destroy, not CommandBuffer).  They never act.
 //
 // Pipeline order:
 //   SelectTargets > ComputeDesiredMove > ApplyCrowdSteer >
@@ -19,6 +24,9 @@ namespace de {
 // This guarantees that the result is independent of iteration order:
 // every agent alive at the start of the tick gets to act, and all
 // damage is applied simultaneously before death checks.
+//
+// Deaths caused during the tick (ResolveDamage -> RemoveDead) are
+// deferred via CommandBuffer and applied after all systems finish.
 
 // Pick the nearest enemy as pursuit target.
 uint32_t select_targets(WorldView& view, float dt, CommandBuffer& cmds);
