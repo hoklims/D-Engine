@@ -226,9 +226,9 @@ uint32_t apply_separation(WorldView& view, float /*dt*/,
                           CommandBuffer& /*cmds*/) {
     s_separation_pairs = 0;
     uint32_t count = 0;
-    view.each<CrowdAgent, Position, Velocity, Separation>(
+    view.each<CrowdAgent, Position, Velocity, Separation, MoveSpeed>(
         [&](EntityId self, CrowdAgent&, Position& pos,
-            Velocity& vel, Separation& sep) {
+            Velocity& vel, Separation& sep, MoveSpeed& spd) {
             ++count;
             float push_x = 0.0f;
             float push_y = 0.0f;
@@ -244,7 +244,11 @@ uint32_t apply_separation(WorldView& view, float /*dt*/,
                         dx /= dist;
                         dy /= dist;
                     } else {
-                        dx = 1.0f;
+                        // Exact overlap: deterministic antisymmetric
+                        // tiebreak on EntityId.  Lower index pushes +X,
+                        // higher index pushes -X.  Guarantees the pair
+                        // receives opposite impulses.
+                        dx = (self.index < e.id.index) ? 1.0f : -1.0f;
                         dy = 0.0f;
                     }
                     push_x += dx * overlap * sep.strength;
@@ -253,6 +257,16 @@ uint32_t apply_separation(WorldView& view, float /*dt*/,
 
             vel.dx += push_x;
             vel.dy += push_y;
+
+            // Reclamp to MoveSpeed.max so separation never violates
+            // the speed contract established by ApplyCrowdSteer.
+            float speed2 = vel.dx * vel.dx + vel.dy * vel.dy;
+            float max2   = spd.max * spd.max;
+            if (speed2 > max2) {
+                float scale = spd.max / std::sqrt(speed2);
+                vel.dx *= scale;
+                vel.dy *= scale;
+            }
         });
     return count;
 }

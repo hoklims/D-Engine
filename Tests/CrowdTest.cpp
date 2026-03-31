@@ -1018,6 +1018,104 @@ static void test_separation_telemetry() {
 }
 
 // =================================================================
+//  Separation: exact overlap -- agents at same point separate
+// =================================================================
+
+static void test_separation_exact_overlap() {
+    de::CrowdConfig cfg;
+    cfg.agents_per_team     = 1;
+    cfg.team_spacing        = 0.0f;   // both teams at origin
+    cfg.separation_radius   = 0.8f;
+    cfg.separation_strength = 5.0f;
+    cfg.health              = 10000.0f;
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+
+    de::EntityId a = {0, 1};
+    de::EntityId b = {1, 1};
+
+    // Force exact overlap.
+    sim.world.get<de::Position>(a)->x = 0.0f;
+    sim.world.get<de::Position>(a)->y = 0.0f;
+    sim.world.get<de::Position>(b)->x = 0.0f;
+    sim.world.get<de::Position>(b)->y = 0.0f;
+
+    sim.tick(0.1);
+
+    float ax = sim.world.get<de::Position>(a)->x;
+    float bx = sim.world.get<de::Position>(b)->x;
+    float dist = std::abs(ax - bx);
+    check(dist > 1e-6f,
+          "sep_exact: agents at same point separated after 1 tick");
+}
+
+// =================================================================
+//  Separation: exact overlap midpoint does not drift
+// =================================================================
+
+static void test_separation_exact_overlap_midpoint() {
+    de::CrowdConfig cfg;
+    cfg.agents_per_team     = 1;
+    cfg.team_spacing        = 0.0f;
+    cfg.separation_radius   = 0.8f;
+    cfg.separation_strength = 5.0f;
+    cfg.health              = 10000.0f;
+    cfg.move_speed          = 100.0f;  // high so clamp doesn't zero separation
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+
+    de::EntityId a = {0, 1};
+    de::EntityId b = {1, 1};
+
+    sim.world.get<de::Position>(a)->x = 10.0f;
+    sim.world.get<de::Position>(a)->y = 5.0f;
+    sim.world.get<de::Position>(b)->x = 10.0f;
+    sim.world.get<de::Position>(b)->y = 5.0f;
+
+    // Disable pursuit so only separation acts on position.
+    sim.world.get<de::Target>(a)->has_target = false;
+    sim.world.get<de::Target>(b)->has_target = false;
+
+    sim.tick(0.1);
+
+    float ax = sim.world.get<de::Position>(a)->x;
+    float bx = sim.world.get<de::Position>(b)->x;
+    float midpoint = (ax + bx) * 0.5f;
+    check(std::abs(midpoint - 10.0f) < 1e-4f,
+          "sep_midpoint: midpoint did not drift on exact overlap");
+}
+
+// =================================================================
+//  Separation: speed clamp -- velocity never exceeds MoveSpeed.max
+// =================================================================
+
+static void test_separation_speed_clamp() {
+    de::CrowdConfig cfg;
+    cfg.agents_per_team     = 10;
+    cfg.team_spacing        = 0.5f;
+    cfg.agent_spread        = 0.05f;  // extreme packing
+    cfg.move_speed          = 3.0f;
+    cfg.separation_radius   = 0.8f;
+    cfg.separation_strength = 50.0f;  // very strong to stress clamp
+    cfg.health              = 10000.0f;
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+    sim.tick(0.1);
+
+    bool all_clamped = true;
+    sim.world.each<de::CrowdAgent, de::Velocity, de::MoveSpeed>(
+        [&](de::EntityId, de::CrowdAgent&, de::Velocity& vel, de::MoveSpeed& spd) {
+            float speed = std::sqrt(vel.dx * vel.dx + vel.dy * vel.dy);
+            if (speed > spd.max + 1e-4f) all_clamped = false;
+        });
+    check(all_clamped,
+          "sep_clamp: velocity never exceeds MoveSpeed.max");
+}
+
+// =================================================================
 //  main
 // =================================================================
 
@@ -1068,6 +1166,9 @@ int main() {
     test_separation_distant_unaffected();
     test_separation_combat_still_works();
     test_separation_telemetry();
+    test_separation_exact_overlap();
+    test_separation_exact_overlap_midpoint();
+    test_separation_speed_clamp();
 
     std::printf("\nCrowdTest results: %d passed, %d failed\n",
                 g_pass, g_fail);
