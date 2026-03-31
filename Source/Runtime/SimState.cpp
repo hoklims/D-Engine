@@ -79,6 +79,10 @@ void SimState::bootstrap_crowd(const CrowdConfig& cfg) {
     targeting_candidates_scanned_ = 0;
     separation_pairs_this_tick_  = 0;
     agents_engaged_              = 0;
+    nav_queries_this_tick_       = 0;
+    nav_blocked_cells_           = 0;
+    nav_grid_active_             = false;
+    set_battlefield_grids(nullptr, 0);
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -111,6 +115,44 @@ void SimState::bootstrap_crowd(const CrowdConfig& cfg) {
     update_crowd_stats();
 }
 
+void SimState::bootstrap_battlefield(const BattlefieldConfig& cfg) {
+    // Reuse crowd bootstrap for agents (clears nav state too).
+    bootstrap_crowd(cfg.crowd);
+
+    // Init per-team grids with identical geometry and obstacles.
+    for (uint32_t t = 0; t < k_max_teams; ++t) {
+        nav_grids_[t].init(cfg.grid_width, cfg.grid_height,
+                           cfg.grid_cell, cfg.grid_ox, cfg.grid_oy);
+        for (int i = 0; i < cfg.obstacle_count; ++i) {
+            nav_grids_[t].set_blocked(cfg.obstacles[i].cx, cfg.obstacles[i].cy);
+        }
+        nav_grid_ptrs_[t] = &nav_grids_[t];
+    }
+    nav_grid_active_   = true;
+    nav_blocked_cells_ = nav_grids_[0].blocked_count();
+
+    // Record per-team goals (team 0 goal = +spacing, team 1 goal = -spacing).
+    nav_goals_x_[0] =  cfg.crowd.team_spacing;
+    nav_goals_y_[0] =  0.0f;
+    nav_goals_x_[1] = -cfg.crowd.team_spacing;
+    nav_goals_y_[1] =  0.0f;
+    for (uint32_t t = 2; t < k_max_teams; ++t) {
+        nav_goals_x_[t] = 0.0f;
+        nav_goals_y_[t] = 0.0f;
+    }
+
+    // Build initial flow fields and install pointers.
+    build_nav_fields();
+    set_battlefield_grids(nav_grid_ptrs_, k_max_teams);
+}
+
+void SimState::build_nav_fields() {
+    if (!nav_grid_active_) return;
+    for (uint32_t t = 0; t < k_max_teams; ++t) {
+        nav_grids_[t].build_integration_field(nav_goals_x_[t], nav_goals_y_[t]);
+    }
+}
+
 void SimState::tick(double step_dt) {
     cull_pre_dead();
 
@@ -136,6 +178,7 @@ void SimState::tick(double step_dt) {
     targeting_candidates_scanned_   = crowd_candidates_scanned_this_tick();
     separation_pairs_this_tick_     = crowd_separation_pairs_this_tick();
     agents_engaged_                 = crowd_agents_engaged_this_tick();
+    nav_queries_this_tick_          = crowd_nav_queries_this_tick();
 
     cmds_queued_last_ = cmds_.pending();
     cmds_.apply(world);
@@ -159,6 +202,10 @@ void SimState::shutdown() {
     targeting_candidates_scanned_ = 0;
     separation_pairs_this_tick_  = 0;
     agents_engaged_              = 0;
+    nav_queries_this_tick_       = 0;
+    nav_blocked_cells_           = 0;
+    nav_grid_active_             = false;
+    set_battlefield_grids(nullptr, 0);
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -184,6 +231,8 @@ SimSnapshot SimState::snapshot() const {
     snap.targeting_candidates_scanned   = targeting_candidates_scanned_;
     snap.separation_pairs_this_tick     = separation_pairs_this_tick_;
     snap.agents_engaged                 = agents_engaged_;
+    snap.nav_queries_this_tick          = nav_queries_this_tick_;
+    snap.nav_blocked_cells              = nav_blocked_cells_;
     return snap;
 }
 

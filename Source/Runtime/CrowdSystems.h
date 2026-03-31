@@ -2,6 +2,7 @@
 
 #include "ECS/WorldView.h"
 #include "Runtime/CommandBuffer.h"
+#include "Runtime/BattlefieldGrid.h"
 
 #include <cstdint>
 
@@ -38,7 +39,15 @@ uint32_t select_targets(WorldView& view, float dt, CommandBuffer& cmds);
 
 // Set desired direction toward BattleGoal (strategic layer).
 // ComputeDesiredMove may override this with local pursuit.
+// If a BattlefieldGrid is installed, direction is sampled from the
+// flow field instead of pointing straight at the goal.
 uint32_t compute_battle_goal(WorldView& view, float dt, CommandBuffer& cmds);
+
+// Install / remove per-team battlefield navigation grids.
+// Array indexed by team ID.  Pass nullptr/0 to disable navigation.
+// Pointers must remain valid for the lifetime of the crowd tick.
+void     set_battlefield_grids(const BattlefieldGrid* const* grids, uint32_t count);
+uint32_t get_battlefield_grid_count();
 
 // Override desired direction with local pursuit when the nearest enemy
 // is within EngageRadius.  Zeroes direction inside attack range (stop to fight).
@@ -68,6 +77,7 @@ uint32_t crowd_deaths_queued_this_tick();
 uint32_t crowd_candidates_scanned_this_tick();
 uint32_t crowd_separation_pairs_this_tick();
 uint32_t crowd_agents_engaged_this_tick();
+uint32_t crowd_nav_queries_this_tick();
 void     reset_crowd_tick_counters();
 
 }  // namespace de

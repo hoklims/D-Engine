@@ -18,23 +18,35 @@ struct HitEvent {
 
 static std::vector<HitEvent> s_hit_buffer;
 static SpatialGrid s_grid;
+static const BattlefieldGrid* const* s_nav_grids = nullptr;
+static uint32_t s_nav_grid_count         = 0;
 static uint32_t s_attacks_this_tick      = 0;
 static uint32_t s_deaths_this_tick       = 0;
 static uint32_t s_candidates_scanned     = 0;
 static uint32_t s_separation_pairs       = 0;
 static uint32_t s_agents_engaged         = 0;
+static uint32_t s_nav_queries            = 0;
 
 uint32_t crowd_attacks_this_tick()            { return s_attacks_this_tick; }
 uint32_t crowd_deaths_queued_this_tick()      { return s_deaths_this_tick; }
 uint32_t crowd_candidates_scanned_this_tick() { return s_candidates_scanned; }
 uint32_t crowd_separation_pairs_this_tick()   { return s_separation_pairs; }
 uint32_t crowd_agents_engaged_this_tick()     { return s_agents_engaged; }
+uint32_t crowd_nav_queries_this_tick()        { return s_nav_queries; }
+
+void set_battlefield_grids(const BattlefieldGrid* const* grids, uint32_t count) {
+    s_nav_grids      = grids;
+    s_nav_grid_count = count;
+}
+uint32_t get_battlefield_grid_count() { return s_nav_grid_count; }
+
 void     reset_crowd_tick_counters() {
     s_attacks_this_tick  = 0;
     s_deaths_this_tick   = 0;
     s_candidates_scanned = 0;
     s_separation_pairs   = 0;
     s_agents_engaged     = 0;
+    s_nav_queries        = 0;
     s_hit_buffer.clear();
 }
 
@@ -85,10 +97,31 @@ uint32_t select_targets(WorldView& view, float /*dt*/, CommandBuffer& /*cmds*/) 
 uint32_t compute_battle_goal(WorldView& view, float /*dt*/,
                              CommandBuffer& /*cmds*/) {
     uint32_t count = 0;
-    view.each<CrowdAgent, Position, BattleGoal, DesiredDirection>(
-        [&](EntityId, CrowdAgent&, Position& pos,
+    view.each<CrowdAgent, Team, Position, BattleGoal, DesiredDirection>(
+        [&](EntityId, CrowdAgent&, Team& team, Position& pos,
             BattleGoal& goal, DesiredDirection& dir) {
             ++count;
+
+            // Try flow-field navigation if a grid is installed for this team.
+            if (s_nav_grids && team.id < s_nav_grid_count) {
+                const BattlefieldGrid* grid = s_nav_grids[team.id];
+                if (grid) {
+                    float fx = 0.0f;
+                    float fy = 0.0f;
+                    ++s_nav_queries;
+                    if (grid->sample_flow(pos.x, pos.y, fx, fy)) {
+                        float len = std::sqrt(fx * fx + fy * fy);
+                        if (len > 1e-6f) {
+                            dir.dx = fx / len;
+                            dir.dy = fy / len;
+                            return;
+                        }
+                    }
+                    // Fallthrough: unreachable or zero flow -> direct line.
+                }
+            }
+
+            // Direct line toward goal (original behavior).
             float dx  = goal.x - pos.x;
             float dy  = goal.y - pos.y;
             float len = std::sqrt(dx * dx + dy * dy);

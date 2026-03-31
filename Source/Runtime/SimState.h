@@ -4,6 +4,7 @@
 #include "ECS/WorldView.h"
 #include "Runtime/CommandBuffer.h"
 #include "Runtime/Components.h"
+#include "Runtime/BattlefieldGrid.h"
 
 #include <cstdint>
 
@@ -46,6 +47,10 @@ struct SimSnapshot {
 
     // Battle goal telemetry (this tick).
     uint32_t    agents_engaged = 0;
+
+    // Navigation telemetry (this tick).
+    uint32_t    nav_queries_this_tick = 0;
+    uint32_t    nav_blocked_cells     = 0;
 };
 
 // Signature for a fixed-step simulation system.
@@ -81,6 +86,23 @@ struct CrowdConfig {
     float engage_radius       = 15.0f;
 };
 
+// Obstacle definition for battlefield scenes.
+struct ObstacleDef {
+    int cx, cy;   // cell coordinates
+};
+
+// Configuration for a battlefield scene with navigation grid.
+struct BattlefieldConfig {
+    CrowdConfig       crowd       = {};
+    int               grid_width  = 60;
+    int               grid_height = 40;
+    float             grid_cell   = 1.0f;
+    float             grid_ox     = -30.0f;  // origin x (world)
+    float             grid_oy     = -20.0f;  // origin y (world)
+    const ObstacleDef* obstacles  = nullptr;
+    int               obstacle_count = 0;
+};
+
 // Owns a World and runs an ordered pipeline of fixed systems each tick.
 //
 // Lifecycle contract:
@@ -100,6 +122,7 @@ struct SimState {
     void bootstrap();
     void bootstrap_crowd();
     void bootstrap_crowd(const CrowdConfig& cfg);
+    void bootstrap_battlefield(const BattlefieldConfig& cfg);
     void tick(double step_dt);
     void shutdown();
 
@@ -125,11 +148,19 @@ private:
     uint32_t      targeting_candidates_scanned_ = 0;
     uint32_t      separation_pairs_this_tick_  = 0;
     uint32_t      agents_engaged_             = 0;
+    uint32_t      nav_queries_this_tick_      = 0;
+    uint32_t      nav_blocked_cells_          = 0;
+    BattlefieldGrid nav_grids_[k_max_teams]   = {};
+    const BattlefieldGrid* nav_grid_ptrs_[k_max_teams] = {};
+    float         nav_goals_x_[k_max_teams]   = {};
+    float         nav_goals_y_[k_max_teams]   = {};
+    bool          nav_grid_active_            = false;
 
     void register_systems();
     void register_crowd_systems();
     void update_crowd_stats();
     void cull_pre_dead();
+    void build_nav_fields();
 };
 
 }  // namespace de

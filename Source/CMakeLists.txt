@@ -17,6 +17,7 @@ add_executable(DEngine WIN32
     Runtime/CrowdSystems.h
     Runtime/CrowdSystems.cpp
     Runtime/SpatialGrid.h
+    Runtime/BattlefieldGrid.h
     Runtime/SimState.h
     Runtime/SimState.cpp
     Platform/Window.h
