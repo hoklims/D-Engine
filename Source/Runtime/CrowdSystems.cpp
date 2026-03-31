@@ -7,6 +7,15 @@
 
 namespace de {
 
+// -- Per-tick combat counters (file scope) -----------------------------------
+
+static uint32_t s_attacks_this_tick = 0;
+static uint32_t s_deaths_this_tick  = 0;
+
+uint32_t crowd_attacks_this_tick()       { return s_attacks_this_tick; }
+uint32_t crowd_deaths_queued_this_tick() { return s_deaths_this_tick; }
+void     reset_crowd_tick_counters()     { s_attacks_this_tick = 0; s_deaths_this_tick = 0; }
+
 // -----------------------------------------------------------------------
 //  select_targets
 // -----------------------------------------------------------------------
@@ -60,9 +69,9 @@ uint32_t select_targets(WorldView& view, float /*dt*/, CommandBuffer& /*cmds*/) 
 uint32_t compute_desired_movement(WorldView& view, float /*dt*/,
                                   CommandBuffer& /*cmds*/) {
     uint32_t count = 0;
-    view.each<CrowdAgent, Position, Target, DesiredDirection>(
+    view.each<CrowdAgent, Position, Target, DesiredDirection, AttackRange>(
         [&](EntityId, CrowdAgent&, Position& pos,
-            Target& tgt, DesiredDirection& dir) {
+            Target& tgt, DesiredDirection& dir, AttackRange& atk_range) {
             ++count;
 
             if (!tgt.has_target || !view.alive(tgt.entity)) {
@@ -81,6 +90,14 @@ uint32_t compute_desired_movement(WorldView& view, float /*dt*/,
             float dx  = tp->x - pos.x;
             float dy  = tp->y - pos.y;
             float len = std::sqrt(dx * dx + dy * dy);
+
+            // In attack range -- stop moving, fight instead.
+            if (len <= atk_range.range) {
+                dir.dx = 0.0f;
+                dir.dy = 0.0f;
+                return;
+            }
+
             if (len > 1e-6f) {
                 dir.dx = dx / len;
                 dir.dy = dy / len;
@@ -107,6 +124,61 @@ uint32_t apply_crowd_steering(WorldView& view, float /*dt*/,
             ++count;
             vel.dx = dir.dx * spd.max;
             vel.dy = dir.dy * spd.max;
+        });
+    return count;
+}
+
+// -----------------------------------------------------------------------
+//  attack_targets
+// -----------------------------------------------------------------------
+// Tick cooldowns.  When in range and cooldown ready, deal damage.
+
+uint32_t attack_targets(WorldView& view, float dt, CommandBuffer& /*cmds*/) {
+    s_attacks_this_tick = 0;
+    uint32_t count = 0;
+    view.each<CrowdAgent, Position, Target, AttackRange,
+              AttackDamage, AttackCooldown>(
+        [&](EntityId, CrowdAgent&, Position& pos, Target& tgt,
+            AttackRange& range, AttackDamage& dmg, AttackCooldown& cd) {
+            ++count;
+            cd.remaining -= dt;
+
+            if (!tgt.has_target || !view.alive(tgt.entity)) return;
+
+            const auto* tp = view.get<Position>(tgt.entity);
+            if (!tp) return;
+
+            float dx   = tp->x - pos.x;
+            float dy   = tp->y - pos.y;
+            float dist = std::sqrt(dx * dx + dy * dy);
+            if (dist > range.range) return;
+            if (cd.remaining > 0.0f) return;
+
+            auto* target_hp = view.get<Health>(tgt.entity);
+            if (target_hp) {
+                target_hp->current -= dmg.damage;
+                ++s_attacks_this_tick;
+            }
+            cd.remaining = cd.interval;
+        });
+    return count;
+}
+
+// -----------------------------------------------------------------------
+//  remove_dead
+// -----------------------------------------------------------------------
+// Queue deferred destruction for agents whose health dropped to zero.
+
+uint32_t remove_dead(WorldView& view, float /*dt*/, CommandBuffer& cmds) {
+    s_deaths_this_tick = 0;
+    uint32_t count = 0;
+    view.each<CrowdAgent, Health>(
+        [&](EntityId id, CrowdAgent&, Health& hp) {
+            ++count;
+            if (hp.current <= 0.0f) {
+                cmds.destroy(id);
+                ++s_deaths_this_tick;
+            }
         });
     return count;
 }

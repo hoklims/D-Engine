@@ -42,6 +42,8 @@ void SimState::bootstrap() {
     cmds_applied_last_ = 0;
     crowd_agent_count_  = 0;
     agents_with_target_ = 0;
+    attacks_this_tick_  = 0;
+    deaths_this_tick_   = 0;
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -65,6 +67,8 @@ void SimState::bootstrap_crowd() {
     cmds_applied_last_ = 0;
     crowd_agent_count_  = 0;
     agents_with_target_ = 0;
+    attacks_this_tick_  = 0;
+    deaths_this_tick_   = 0;
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -87,6 +91,9 @@ void SimState::bootstrap_crowd() {
             world.set(e, Target{});
             world.set(e, DesiredDirection{});
             world.set(e, Health{100.0f, 100.0f});
+            world.set(e, AttackRange{2.0f});
+            world.set(e, AttackDamage{10.0f});
+            world.set(e, AttackCooldown{0.0f, 1.0f});
         }
     }
 
@@ -96,6 +103,7 @@ void SimState::bootstrap_crowd() {
 void SimState::tick(double step_dt) {
     float dt = static_cast<float>(step_dt);
     cmds_.clear();
+    reset_crowd_tick_counters();
 
     WorldView view(world);
 
@@ -109,6 +117,9 @@ void SimState::tick(double step_dt) {
             std::chrono::duration<double>(t1 - t0).count();
         last_stats_[i].entities_processed = n;
     }
+
+    attacks_this_tick_ = crowd_attacks_this_tick();
+    deaths_this_tick_  = crowd_deaths_queued_this_tick();
 
     cmds_queued_last_ = cmds_.pending();
     cmds_.apply(world);
@@ -127,6 +138,8 @@ void SimState::shutdown() {
     cmds_applied_last_ = 0;
     crowd_agent_count_  = 0;
     agents_with_target_ = 0;
+    attacks_this_tick_  = 0;
+    deaths_this_tick_   = 0;
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -147,6 +160,8 @@ SimSnapshot SimState::snapshot() const {
     for (uint32_t i = 0; i < k_max_teams; ++i) {
         snap.team_counts[i] = team_counts_[i];
     }
+    snap.attacks_this_tick = attacks_this_tick_;
+    snap.deaths_this_tick  = deaths_this_tick_;
     return snap;
 }
 
@@ -163,6 +178,8 @@ void SimState::register_crowd_systems() {
     add_system("SelectTargets",      select_targets);
     add_system("ComputeDesiredMove", compute_desired_movement);
     add_system("ApplyCrowdSteer",    apply_crowd_steering);
+    add_system("AttackTargets",      attack_targets);
+    add_system("RemoveDead",         remove_dead);
     add_system("IntegrateVelocity",  integrate_velocity);
     add_system("IntegratePosition",  integrate_position);
 }

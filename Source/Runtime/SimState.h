@@ -33,6 +33,10 @@ struct SimSnapshot {
     uint32_t    crowd_agent_count  = 0;
     uint32_t    agents_with_target = 0;
     uint32_t    team_counts[k_max_teams] = {};
+
+    // Combat metrics (this tick).
+    uint32_t    attacks_this_tick  = 0;
+    uint32_t    deaths_this_tick   = 0;
 };
 
 // Signature for a fixed-step simulation system.
@@ -91,6 +95,8 @@ private:
     uint32_t      crowd_agent_count_   = 0;
     uint32_t      agents_with_target_  = 0;
     uint32_t      team_counts_[k_max_teams] = {};
+    uint32_t      attacks_this_tick_   = 0;
+    uint32_t      deaths_this_tick_    = 0;
 
     void register_systems();
     void register_crowd_systems();

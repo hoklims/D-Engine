@@ -197,7 +197,7 @@ static void test_crowd_system_order() {
     sim.tick(1.0);
 
     de::SimSnapshot snap = sim.snapshot();
-    check(snap.system_count == 5, "system_order: 5 systems registered");
+    check(snap.system_count == 7, "system_order: 7 systems registered");
 
     check(std::strcmp(snap.systems[0].name, "SelectTargets") == 0,
           "system_order: [0] SelectTargets");
@@ -205,10 +205,14 @@ static void test_crowd_system_order() {
           "system_order: [1] ComputeDesiredMove");
     check(std::strcmp(snap.systems[2].name, "ApplyCrowdSteer") == 0,
           "system_order: [2] ApplyCrowdSteer");
-    check(std::strcmp(snap.systems[3].name, "IntegrateVelocity") == 0,
-          "system_order: [3] IntegrateVelocity");
-    check(std::strcmp(snap.systems[4].name, "IntegratePosition") == 0,
-          "system_order: [4] IntegratePosition");
+    check(std::strcmp(snap.systems[3].name, "AttackTargets") == 0,
+          "system_order: [3] AttackTargets");
+    check(std::strcmp(snap.systems[4].name, "RemoveDead") == 0,
+          "system_order: [4] RemoveDead");
+    check(std::strcmp(snap.systems[5].name, "IntegrateVelocity") == 0,
+          "system_order: [5] IntegrateVelocity");
+    check(std::strcmp(snap.systems[6].name, "IntegratePosition") == 0,
+          "system_order: [6] IntegratePosition");
 }
 
 // =================================================================
@@ -279,10 +283,189 @@ static void test_crowd_bootstrap_idempotent() {
     de::SimSnapshot snap = sim.snapshot();
     check(snap.tick_count == 0,
           "crowd_idempotent: tick_count reset");
-    check(snap.system_count == 5,
-          "crowd_idempotent: 5 systems, not 10");
+    check(snap.system_count == 7,
+          "crowd_idempotent: 7 systems, not 14");
     check(snap.crowd_agent_count == 20,
           "crowd_idempotent: crowd metrics correct after re-bootstrap");
+}
+
+// =================================================================
+//  Agent stops when target is within attack range
+// =================================================================
+
+static void test_combat_stop_in_range() {
+    de::SimState sim;
+    sim.bootstrap_crowd();
+
+    // Move one pair close together (within attack range of 2.0).
+    de::EntityId a = {0, 1};   // team 0
+    de::EntityId b = {10, 1};  // team 1
+    sim.world.get<de::Position>(a)->x = 0.0f;
+    sim.world.get<de::Position>(a)->y = 0.0f;
+    sim.world.get<de::Position>(b)->x = 1.5f;
+    sim.world.get<de::Position>(b)->y = 0.0f;
+
+    sim.tick(1.0);
+
+    // Both should have near-zero velocity (stopped to fight).
+    auto* va = sim.world.get<de::Velocity>(a);
+    auto* vb = sim.world.get<de::Velocity>(b);
+    check(approx(va->dx, 0.0f) && approx(va->dy, 0.0f),
+          "stop_in_range: agent A velocity ~= 0");
+    check(approx(vb->dx, 0.0f) && approx(vb->dy, 0.0f),
+          "stop_in_range: agent B velocity ~= 0");
+}
+
+// =================================================================
+//  Attack reduces target HP
+// =================================================================
+
+static void test_combat_attack_reduces_hp() {
+    de::SimState sim;
+    sim.bootstrap_crowd();
+
+    de::EntityId a = {0, 1};
+    de::EntityId b = {10, 1};
+    sim.world.get<de::Position>(a)->x = 0.0f;
+    sim.world.get<de::Position>(a)->y = 0.0f;
+    sim.world.get<de::Position>(b)->x = 1.5f;
+    sim.world.get<de::Position>(b)->y = 0.0f;
+
+    sim.tick(1.0);
+
+    // Both agents attack each other: damage = 10, so HP = 100 - 10 = 90.
+    auto* hp_a = sim.world.get<de::Health>(a);
+    auto* hp_b = sim.world.get<de::Health>(b);
+    check(approx(hp_a->current, 90.0f),
+          "attack_hp: agent A HP == 90 after being attacked");
+    check(approx(hp_b->current, 90.0f),
+          "attack_hp: agent B HP == 90 after being attacked");
+}
+
+// =================================================================
+//  Cooldown prevents attacking every tick
+// =================================================================
+
+static void test_combat_cooldown() {
+    de::SimState sim;
+    sim.bootstrap_crowd();
+
+    de::EntityId a = {0, 1};
+    de::EntityId b = {10, 1};
+    sim.world.get<de::Position>(a)->x = 0.0f;
+    sim.world.get<de::Position>(a)->y = 0.0f;
+    sim.world.get<de::Position>(b)->x = 1.5f;
+    sim.world.get<de::Position>(b)->y = 0.0f;
+    // Agent A: slow attacker (interval 3s). Agent B: never attacks.
+    sim.world.get<de::AttackCooldown>(a)->interval = 3.0f;
+    sim.world.get<de::AttackCooldown>(b)->remaining = 100.0f;
+    sim.world.get<de::AttackCooldown>(b)->interval = 100.0f;
+
+    sim.tick(1.0);  // A attacks B (cd was 0, ready). B cd = 99.
+    check(approx(sim.world.get<de::Health>(b)->current, 90.0f),
+          "cooldown: tick 1 -- A attacks, B HP == 90");
+
+    sim.tick(1.0);  // A cooldown = 3-1=2 > 0, no attack.
+    check(approx(sim.world.get<de::Health>(b)->current, 90.0f),
+          "cooldown: tick 2 -- cooldown prevents attack, B HP still 90");
+
+    sim.tick(1.0);  // A cooldown = 2-1=1 > 0, still no attack.
+    check(approx(sim.world.get<de::Health>(b)->current, 90.0f),
+          "cooldown: tick 3 -- cooldown still active, B HP still 90");
+
+    sim.tick(1.0);  // A cooldown = 1-1=0 <= 0, attack!
+    check(approx(sim.world.get<de::Health>(b)->current, 80.0f),
+          "cooldown: tick 4 -- cooldown expired, A attacks, B HP == 80");
+}
+
+// =================================================================
+//  Dead agent is destroyed via CommandBuffer at end of tick
+// =================================================================
+
+static void test_combat_deferred_death() {
+    de::SimState sim;
+    sim.bootstrap_crowd();
+
+    de::EntityId a = {0, 1};
+    de::EntityId b = {10, 1};
+    sim.world.get<de::Position>(a)->x = 0.0f;
+    sim.world.get<de::Position>(a)->y = 0.0f;
+    sim.world.get<de::Position>(b)->x = 1.5f;
+    sim.world.get<de::Position>(b)->y = 0.0f;
+    sim.world.get<de::Health>(b)->current = 5.0f;  // will die from 10 dmg
+    // Prevent B from attacking back.
+    sim.world.get<de::AttackCooldown>(b)->remaining = 100.0f;
+    sim.world.get<de::AttackCooldown>(b)->interval = 100.0f;
+
+    sim.tick(1.0);
+
+    check(!sim.world.alive(b),
+          "deferred_death: dead agent destroyed after tick");
+    check(sim.world.entity_count() == 19,
+          "deferred_death: entity count == 19");
+    check(sim.world.alive(a),
+          "deferred_death: attacker still alive");
+}
+
+// =================================================================
+//  Snapshot combat metrics are coherent
+// =================================================================
+
+static void test_combat_snapshot_metrics() {
+    de::SimState sim;
+    sim.bootstrap_crowd();
+
+    de::EntityId a = {0, 1};
+    de::EntityId b = {10, 1};
+    sim.world.get<de::Position>(a)->x = 0.0f;
+    sim.world.get<de::Position>(a)->y = 0.0f;
+    sim.world.get<de::Position>(b)->x = 1.5f;
+    sim.world.get<de::Position>(b)->y = 0.0f;
+    sim.world.get<de::Health>(b)->current = 5.0f;
+    sim.world.get<de::AttackCooldown>(b)->remaining = 100.0f;
+    sim.world.get<de::AttackCooldown>(b)->interval = 100.0f;
+
+    sim.tick(1.0);
+
+    de::SimSnapshot snap = sim.snapshot();
+    check(snap.attacks_this_tick >= 1,
+          "combat_snapshot: at least 1 attack this tick");
+    check(snap.deaths_this_tick >= 1,
+          "combat_snapshot: at least 1 death this tick");
+    check(snap.crowd_agent_count == 19,
+          "combat_snapshot: 19 crowd agents after death");
+}
+
+// =================================================================
+//  Full battle: enough ticks wipe out one team
+// =================================================================
+
+static void test_combat_full_battle() {
+    de::SimState sim;
+    sim.bootstrap_crowd();
+
+    // Break symmetry: give team 0 a slight HP edge so it always wins.
+    sim.world.each<de::CrowdAgent, de::Team, de::Health>(
+        [](de::EntityId, de::CrowdAgent&, de::Team& t, de::Health& hp) {
+            if (t.id == 0) hp.current = 105.0f;
+        });
+
+    // Run until one team is gone or max ticks.
+    constexpr int max_ticks = 200;
+    for (int i = 0; i < max_ticks; ++i) {
+        sim.tick(1.0);
+        de::SimSnapshot snap = sim.snapshot();
+        if (snap.team_counts[0] == 0 || snap.team_counts[1] == 0) break;
+    }
+
+    de::SimSnapshot snap = sim.snapshot();
+    bool one_team_wiped = (snap.team_counts[0] == 0 || snap.team_counts[1] == 0);
+    check(one_team_wiped,
+          "full_battle: one team is eliminated");
+    check(snap.crowd_agent_count > 0,
+          "full_battle: winners survive");
+    check(snap.crowd_agent_count < 20,
+          "full_battle: casualties occurred");
 }
 
 // =================================================================
@@ -302,6 +485,14 @@ int main() {
     test_crowd_snapshot_metrics();
     test_crowd_speed_clamp();
     test_crowd_bootstrap_idempotent();
+
+    // Combat tests
+    test_combat_stop_in_range();
+    test_combat_attack_reduces_hp();
+    test_combat_cooldown();
+    test_combat_deferred_death();
+    test_combat_snapshot_metrics();
+    test_combat_full_battle();
 
     std::printf("\nCrowdTest results: %d passed, %d failed\n",
                 g_pass, g_fail);

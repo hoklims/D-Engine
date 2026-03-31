@@ -30,4 +30,16 @@ struct Health {
     float max     = 100.0f;
 };
 
+// Melee attack range (units). Agent stops and attacks when within range.
+struct AttackRange { float range = 2.0f; };
+
+// Flat damage dealt per attack.
+struct AttackDamage { float damage = 10.0f; };
+
+// Simple cooldown timer. remaining <= 0 means ready to attack.
+struct AttackCooldown {
+    float remaining = 0.0f;   // seconds until next attack
+    float interval  = 1.0f;   // seconds between attacks
+};
+
 }  // namespace de
