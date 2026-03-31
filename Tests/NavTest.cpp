@@ -490,6 +490,75 @@ static void test_nav_telemetry() {
 }
 
 // =================================================================
+//  bootstrap() after battlefield clears all nav state
+// =================================================================
+
+static void test_bootstrap_clears_nav_state() {
+    // Start with a battlefield scene (nav active).
+    de::ObstacleDef obs[] = {{5, 5}};
+    de::BattlefieldConfig bcfg;
+    bcfg.crowd.agents_per_team = 2;
+    bcfg.obstacles             = obs;
+    bcfg.obstacle_count        = 1;
+
+    de::SimState sim;
+    sim.bootstrap_battlefield(bcfg);
+    sim.tick(1.0);
+
+    // Verify nav was active.
+    de::SimSnapshot snap1 = sim.snapshot();
+    check(snap1.nav_queries_this_tick > 0,
+          "clear_nav: nav queries present after battlefield tick");
+    check(snap1.nav_blocked_cells == 1,
+          "clear_nav: 1 blocked cell after battlefield bootstrap");
+
+    // Now do a plain bootstrap() -- all nav state must be gone.
+    sim.bootstrap();
+
+    de::SimSnapshot snap2 = sim.snapshot();
+    check(snap2.nav_queries_this_tick == 0,
+          "clear_nav: nav_queries == 0 after plain bootstrap");
+    check(snap2.nav_failures_this_tick == 0,
+          "clear_nav: nav_failures == 0 after plain bootstrap");
+    check(snap2.nav_blocked_cells == 0,
+          "clear_nav: nav_blocked_cells == 0 after plain bootstrap");
+
+    // Tick the plain scene -- no nav queries should occur.
+    sim.tick(1.0);
+
+    de::SimSnapshot snap3 = sim.snapshot();
+    check(snap3.nav_queries_this_tick == 0,
+          "clear_nav: no nav queries after plain bootstrap + tick");
+}
+
+// =================================================================
+//  obstacle_count > 0 with nullptr obstacles -> no crash, no obstacles
+// =================================================================
+
+static void test_null_obstacles_pointer() {
+    de::BattlefieldConfig bcfg;
+    bcfg.crowd.agents_per_team = 2;
+    bcfg.obstacles             = nullptr;
+    bcfg.obstacle_count        = 5;  // dangling count
+
+    de::SimState sim;
+    sim.bootstrap_battlefield(bcfg);
+
+    // Should not crash and should have zero blocked cells.
+    de::SimSnapshot snap = sim.snapshot();
+    check(snap.nav_blocked_cells == 0,
+          "null_obstacles: 0 blocked cells despite obstacle_count == 5");
+
+    // Nav should be active (grid is valid, just no obstacles).
+    sim.tick(1.0);
+    de::SimSnapshot snap2 = sim.snapshot();
+    check(snap2.nav_queries_this_tick > 0,
+          "null_obstacles: nav queries occur (grid is valid)");
+    check(snap2.nav_failures_this_tick == 0,
+          "null_obstacles: no nav failures (all cells reachable)");
+}
+
+// =================================================================
 //  Main
 // =================================================================
 
@@ -506,6 +575,8 @@ int main() {
     test_nav_invalid_config_fallback();
     test_nav_engage_overrides_flow();
     test_nav_telemetry();
+    test_bootstrap_clears_nav_state();
+    test_null_obstacles_pointer();
 
     std::printf("\n--- NavTest: %d passed, %d failed ---\n", g_pass, g_fail);
     return g_fail > 0 ? 1 : 0;

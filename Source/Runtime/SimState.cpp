@@ -47,6 +47,11 @@ void SimState::bootstrap() {
     targeting_candidates_scanned_ = 0;
     separation_pairs_this_tick_  = 0;
     agents_engaged_              = 0;
+    nav_queries_this_tick_       = 0;
+    nav_failures_this_tick_      = 0;
+    nav_blocked_cells_           = 0;
+    nav_grid_active_             = false;
+    set_battlefield_grids(nullptr, 0);
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -129,11 +134,15 @@ void SimState::bootstrap_battlefield(const BattlefieldConfig& cfg) {
     // Reuse crowd bootstrap for agents (clears nav state too).
     bootstrap_crowd(cfg.crowd);
 
+    // Sanitize obstacle pointer: ignore obstacle_count if pointer is null.
+    const int safe_obstacle_count =
+        (cfg.obstacles != nullptr) ? cfg.obstacle_count : 0;
+
     // Init per-team grids with identical geometry and obstacles.
     for (uint32_t t = 0; t < k_max_teams; ++t) {
         nav_grids_[t].init(cfg.grid_width, cfg.grid_height,
                            cfg.grid_cell, cfg.grid_ox, cfg.grid_oy);
-        for (int i = 0; i < cfg.obstacle_count; ++i) {
+        for (int i = 0; i < safe_obstacle_count; ++i) {
             nav_grids_[t].set_blocked(cfg.obstacles[i].cx, cfg.obstacles[i].cy);
         }
         nav_grid_ptrs_[t] = &nav_grids_[t];
