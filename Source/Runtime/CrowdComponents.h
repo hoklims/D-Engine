@@ -42,4 +42,10 @@ struct AttackCooldown {
     float interval  = 1.0f;   // seconds between attacks
 };
 
+// Local separation -- soft repulsion from nearby agents.
+struct Separation {
+    float radius   = 0.8f;   // personal space (units)
+    float strength = 5.0f;   // push magnitude at full overlap (units/s)
+};
+
 }  // namespace de

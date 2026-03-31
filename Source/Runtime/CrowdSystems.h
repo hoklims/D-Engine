@@ -48,10 +48,15 @@ uint32_t resolve_damage(WorldView& view, float dt, CommandBuffer& cmds);
 // Queue CommandBuffer::destroy for agents whose health <= 0.
 uint32_t remove_dead(WorldView& view, float dt, CommandBuffer& cmds);
 
+// Soft local separation: push agents apart when within personal space.
+// Runs after ApplyCrowdSteer so velocity already carries pursuit intent.
+uint32_t apply_separation(WorldView& view, float dt, CommandBuffer& cmds);
+
 // Per-tick counters (reset at the start of each tick).
 uint32_t crowd_attacks_this_tick();
 uint32_t crowd_deaths_queued_this_tick();
 uint32_t crowd_candidates_scanned_this_tick();
+uint32_t crowd_separation_pairs_this_tick();
 void     reset_crowd_tick_counters();
 
 }  // namespace de

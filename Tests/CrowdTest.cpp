@@ -198,7 +198,7 @@ static void test_crowd_system_order() {
     sim.tick(1.0);
 
     de::SimSnapshot snap = sim.snapshot();
-    check(snap.system_count == 8, "system_order: 8 systems registered");
+    check(snap.system_count == 9, "system_order: 9 systems registered");
 
     check(std::strcmp(snap.systems[0].name, "SelectTargets") == 0,
           "system_order: [0] SelectTargets");
@@ -206,16 +206,18 @@ static void test_crowd_system_order() {
           "system_order: [1] ComputeDesiredMove");
     check(std::strcmp(snap.systems[2].name, "ApplyCrowdSteer") == 0,
           "system_order: [2] ApplyCrowdSteer");
-    check(std::strcmp(snap.systems[3].name, "AttackTargets") == 0,
-          "system_order: [3] AttackTargets");
-    check(std::strcmp(snap.systems[4].name, "ResolveDamage") == 0,
-          "system_order: [4] ResolveDamage");
-    check(std::strcmp(snap.systems[5].name, "RemoveDead") == 0,
-          "system_order: [5] RemoveDead");
-    check(std::strcmp(snap.systems[6].name, "IntegrateVelocity") == 0,
-          "system_order: [6] IntegrateVelocity");
-    check(std::strcmp(snap.systems[7].name, "IntegratePosition") == 0,
-          "system_order: [7] IntegratePosition");
+    check(std::strcmp(snap.systems[3].name, "ApplySeparation") == 0,
+          "system_order: [3] ApplySeparation");
+    check(std::strcmp(snap.systems[4].name, "AttackTargets") == 0,
+          "system_order: [4] AttackTargets");
+    check(std::strcmp(snap.systems[5].name, "ResolveDamage") == 0,
+          "system_order: [5] ResolveDamage");
+    check(std::strcmp(snap.systems[6].name, "RemoveDead") == 0,
+          "system_order: [6] RemoveDead");
+    check(std::strcmp(snap.systems[7].name, "IntegrateVelocity") == 0,
+          "system_order: [7] IntegrateVelocity");
+    check(std::strcmp(snap.systems[8].name, "IntegratePosition") == 0,
+          "system_order: [8] IntegratePosition");
 }
 
 // =================================================================
@@ -286,8 +288,8 @@ static void test_crowd_bootstrap_idempotent() {
     de::SimSnapshot snap = sim.snapshot();
     check(snap.tick_count == 0,
           "crowd_idempotent: tick_count reset");
-    check(snap.system_count == 8,
-          "crowd_idempotent: 8 systems, not 16");
+    check(snap.system_count == 9,
+          "crowd_idempotent: 9 systems, not 18");
     check(snap.crowd_agent_count == 20,
           "crowd_idempotent: crowd metrics correct after re-bootstrap");
 }
@@ -875,6 +877,147 @@ static void test_grid_huge_spacing_unit_api() {
 }
 
 // =================================================================
+//  Separation: two close agents push apart
+// =================================================================
+
+static void test_separation_two_close_agents() {
+    de::CrowdConfig cfg;
+    cfg.agents_per_team = 1;
+    cfg.team_spacing    = 0.2f;   // teams 0.4 units apart (< default radius 0.8)
+    cfg.separation_radius   = 0.8f;
+    cfg.separation_strength = 5.0f;
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+
+    // Record initial distance.
+    de::EntityId a = {0, 1};
+    de::EntityId b = {1, 1};
+    float ax0 = sim.world.get<de::Position>(a)->x;
+    float bx0 = sim.world.get<de::Position>(b)->x;
+    float dist0 = std::abs(bx0 - ax0);
+
+    sim.tick(0.1);
+
+    float ax1 = sim.world.get<de::Position>(a)->x;
+    float bx1 = sim.world.get<de::Position>(b)->x;
+    float dist1 = std::abs(bx1 - ax1);
+
+    check(dist1 > dist0,
+          "sep_two_close: agents pushed apart after 1 tick");
+}
+
+// =================================================================
+//  Separation: dense group does not collapse to a single point
+// =================================================================
+
+static void test_separation_dense_no_collapse() {
+    de::CrowdConfig cfg;
+    cfg.agents_per_team     = 5;
+    cfg.team_spacing        = 50.0f;  // far enough that pursuit takes time
+    cfg.agent_spread        = 0.1f;   // very tight initial packing along y
+    cfg.health              = 10000.0f;
+    cfg.separation_radius   = 0.8f;
+    cfg.separation_strength = 5.0f;
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+
+    // Run a few ticks for separation to spread agents along y.
+    for (int i = 0; i < 10; ++i) sim.tick(0.1);
+
+    // Check that same-team agents spread out along y (initial spread was 0.4).
+    float min_y = 1e9f, max_y = -1e9f;
+    sim.world.each<de::CrowdAgent, de::Team, de::Position>(
+        [&](de::EntityId, de::CrowdAgent&, de::Team& t, de::Position& p) {
+            if (t.id != 0) return;
+            if (p.y < min_y) min_y = p.y;
+            if (p.y > max_y) max_y = p.y;
+        });
+    float spread = max_y - min_y;
+    check(spread > 0.5f,
+          "sep_dense: team 0 did not collapse to a single point");
+}
+
+// =================================================================
+//  Separation: distant agents are unaffected
+// =================================================================
+
+static void test_separation_distant_unaffected() {
+    de::CrowdConfig cfg;
+    cfg.agents_per_team    = 1;
+    cfg.team_spacing       = 100.0f;   // far apart
+    cfg.separation_radius  = 0.8f;
+    cfg.separation_strength = 5.0f;
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+
+    sim.tick(0.1);
+
+    de::SimSnapshot snap = sim.snapshot();
+    check(snap.separation_pairs_this_tick == 0,
+          "sep_distant: zero separation pairs when agents far apart");
+}
+
+// =================================================================
+//  Separation: combat still works at close range
+// =================================================================
+
+static void test_separation_combat_still_works() {
+    de::CrowdConfig cfg;
+    cfg.agents_per_team    = 1;
+    cfg.team_spacing       = 0.5f;   // within attack range (2.0)
+    cfg.health             = 100.0f;
+    cfg.attack_damage      = 10.0f;
+    cfg.attack_interval    = 0.5f;
+    cfg.separation_radius  = 0.8f;
+    cfg.separation_strength = 5.0f;
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+
+    // Run enough ticks for at least one attack to land.
+    for (int i = 0; i < 5; ++i) sim.tick(0.5);
+
+    // At least one agent should have taken damage.
+    bool someone_hit = false;
+    sim.world.each<de::CrowdAgent, de::Health>(
+        [&](de::EntityId, de::CrowdAgent&, de::Health& hp) {
+            if (hp.current < hp.max) someone_hit = true;
+        });
+    check(someone_hit,
+          "sep_combat: separation does not prevent combat");
+}
+
+// =================================================================
+//  Separation: telemetry is coherent
+// =================================================================
+
+static void test_separation_telemetry() {
+    de::CrowdConfig cfg;
+    cfg.agents_per_team    = 5;
+    cfg.team_spacing       = 1.0f;    // close enough for overlap
+    cfg.agent_spread       = 0.1f;
+    cfg.separation_radius  = 0.8f;
+    cfg.separation_strength = 5.0f;
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+    sim.tick(0.1);
+
+    de::SimSnapshot snap = sim.snapshot();
+    // With 10 agents packed tightly, separation_pairs should be > 0.
+    check(snap.separation_pairs_this_tick > 0,
+          "sep_telemetry: separation pairs counted");
+    // Each pair is counted once per querying agent, so pairs should be
+    // at most N * (N-1) for N agents in overlap range.
+    uint32_t max_pairs = 10 * 9;
+    check(snap.separation_pairs_this_tick <= max_pairs,
+          "sep_telemetry: pairs within upper bound");
+}
+
+// =================================================================
 //  main
 // =================================================================
 
@@ -918,6 +1061,13 @@ int main() {
     test_grid_large_scene();
     test_grid_huge_spacing_finds_enemy();
     test_grid_huge_spacing_unit_api();
+
+    // Separation tests
+    test_separation_two_close_agents();
+    test_separation_dense_no_collapse();
+    test_separation_distant_unaffected();
+    test_separation_combat_still_works();
+    test_separation_telemetry();
 
     std::printf("\nCrowdTest results: %d passed, %d failed\n",
                 g_pass, g_fail);

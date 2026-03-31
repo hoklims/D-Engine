@@ -40,6 +40,9 @@ struct SimSnapshot {
 
     // Targeting telemetry (this tick).
     uint32_t    targeting_candidates_scanned = 0;
+
+    // Separation telemetry (this tick).
+    uint32_t    separation_pairs_this_tick = 0;
 };
 
 // Signature for a fixed-step simulation system.
@@ -69,7 +72,9 @@ struct CrowdConfig {
     float health          = 100.0f;
     float attack_range    = 2.0f;
     float attack_damage   = 10.0f;
-    float attack_interval = 1.0f;
+    float attack_interval     = 1.0f;
+    float separation_radius   = 0.8f;
+    float separation_strength = 5.0f;
 };
 
 // Owns a World and runs an ordered pipeline of fixed systems each tick.
@@ -114,6 +119,7 @@ private:
     uint32_t      attacks_this_tick_   = 0;
     uint32_t      deaths_this_tick_    = 0;
     uint32_t      targeting_candidates_scanned_ = 0;
+    uint32_t      separation_pairs_this_tick_  = 0;
 
     void register_systems();
     void register_crowd_systems();

@@ -45,6 +45,7 @@ void SimState::bootstrap() {
     attacks_this_tick_  = 0;
     deaths_this_tick_   = 0;
     targeting_candidates_scanned_ = 0;
+    separation_pairs_this_tick_  = 0;
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -75,6 +76,7 @@ void SimState::bootstrap_crowd(const CrowdConfig& cfg) {
     attacks_this_tick_  = 0;
     deaths_this_tick_   = 0;
     targeting_candidates_scanned_ = 0;
+    separation_pairs_this_tick_  = 0;
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -96,6 +98,7 @@ void SimState::bootstrap_crowd(const CrowdConfig& cfg) {
             world.set(e, AttackRange{cfg.attack_range});
             world.set(e, AttackDamage{cfg.attack_damage});
             world.set(e, AttackCooldown{0.0f, cfg.attack_interval});
+            world.set(e, Separation{cfg.separation_radius, cfg.separation_strength});
         }
     }
 
@@ -125,6 +128,7 @@ void SimState::tick(double step_dt) {
     attacks_this_tick_              = crowd_attacks_this_tick();
     deaths_this_tick_               = crowd_deaths_queued_this_tick();
     targeting_candidates_scanned_   = crowd_candidates_scanned_this_tick();
+    separation_pairs_this_tick_     = crowd_separation_pairs_this_tick();
 
     cmds_queued_last_ = cmds_.pending();
     cmds_.apply(world);
@@ -146,6 +150,7 @@ void SimState::shutdown() {
     attacks_this_tick_  = 0;
     deaths_this_tick_   = 0;
     targeting_candidates_scanned_ = 0;
+    separation_pairs_this_tick_  = 0;
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -169,6 +174,7 @@ SimSnapshot SimState::snapshot() const {
     snap.attacks_this_tick              = attacks_this_tick_;
     snap.deaths_this_tick               = deaths_this_tick_;
     snap.targeting_candidates_scanned   = targeting_candidates_scanned_;
+    snap.separation_pairs_this_tick     = separation_pairs_this_tick_;
     return snap;
 }
 
@@ -185,6 +191,7 @@ void SimState::register_crowd_systems() {
     add_system("SelectTargets",      select_targets);
     add_system("ComputeDesiredMove", compute_desired_movement);
     add_system("ApplyCrowdSteer",    apply_crowd_steering);
+    add_system("ApplySeparation",   apply_separation);
     add_system("AttackTargets",      attack_targets);
     add_system("ResolveDamage",      resolve_damage);
     add_system("RemoveDead",         remove_dead);

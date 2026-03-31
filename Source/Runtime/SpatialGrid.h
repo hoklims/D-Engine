@@ -127,6 +127,35 @@ struct SpatialGrid {
         return {best, best_d2, found};
     }
 
+    // Call fn(entry, dist2) for every entry within `radius` of (x,y),
+    // excluding `self`.  Returns the number of entries visited.
+    template<typename Fn>
+    uint32_t for_each_nearby(float x, float y, float radius,
+                             EntityId self, Fn&& fn) const {
+        int32_t cx = to_cell(x);
+        int32_t cy = to_cell(y);
+        int32_t cr = static_cast<int32_t>(std::ceil(radius / cell_size));
+        float r2 = radius * radius;
+        uint32_t visited = 0;
+        for (int32_t dx = -cr; dx <= cr; ++dx) {
+            for (int32_t dy = -cr; dy <= cr; ++dy) {
+                auto it = cells_.find(make_key(cx + dx, cy + dy));
+                if (it == cells_.end()) continue;
+                for (const auto& e : it->second) {
+                    if (e.id == self) continue;
+                    float ddx = e.x - x;
+                    float ddy = e.y - y;
+                    float d2 = ddx * ddx + ddy * ddy;
+                    if (d2 < r2) {
+                        fn(e, d2);
+                        ++visited;
+                    }
+                }
+            }
+        }
+        return visited;
+    }
+
 private:
     std::unordered_map<int64_t, std::vector<Entry>> cells_;
     int32_t min_cx_ = 0, max_cx_ = 0;

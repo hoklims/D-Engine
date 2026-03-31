@@ -21,14 +21,17 @@ static SpatialGrid s_grid;
 static uint32_t s_attacks_this_tick      = 0;
 static uint32_t s_deaths_this_tick       = 0;
 static uint32_t s_candidates_scanned     = 0;
+static uint32_t s_separation_pairs       = 0;
 
 uint32_t crowd_attacks_this_tick()            { return s_attacks_this_tick; }
 uint32_t crowd_deaths_queued_this_tick()      { return s_deaths_this_tick; }
 uint32_t crowd_candidates_scanned_this_tick() { return s_candidates_scanned; }
+uint32_t crowd_separation_pairs_this_tick()   { return s_separation_pairs; }
 void     reset_crowd_tick_counters() {
     s_attacks_this_tick  = 0;
     s_deaths_this_tick   = 0;
     s_candidates_scanned = 0;
+    s_separation_pairs   = 0;
     s_hit_buffer.clear();
 }
 
@@ -206,6 +209,50 @@ uint32_t remove_dead(WorldView& view, float /*dt*/, CommandBuffer& cmds) {
                 cmds.destroy(id);
                 ++s_deaths_this_tick;
             }
+        });
+    return count;
+}
+
+// -----------------------------------------------------------------------
+//  apply_separation
+// -----------------------------------------------------------------------
+// Soft local repulsion using the spatial grid built by select_targets.
+// For each agent, find neighbors within personal-space radius and add a
+// push velocity proportional to overlap.  This runs after ApplyCrowdSteer
+// so pursuit velocity is already set; separation nudges agents apart
+// without overriding pursuit intent.
+
+uint32_t apply_separation(WorldView& view, float /*dt*/,
+                          CommandBuffer& /*cmds*/) {
+    s_separation_pairs = 0;
+    uint32_t count = 0;
+    view.each<CrowdAgent, Position, Velocity, Separation>(
+        [&](EntityId self, CrowdAgent&, Position& pos,
+            Velocity& vel, Separation& sep) {
+            ++count;
+            float push_x = 0.0f;
+            float push_y = 0.0f;
+
+            s_separation_pairs += s_grid.for_each_nearby(
+                pos.x, pos.y, sep.radius, self,
+                [&](const SpatialGrid::Entry& e, float d2) {
+                    float dist = std::sqrt(d2);
+                    float overlap = 1.0f - dist / sep.radius;
+                    float dx = pos.x - e.x;
+                    float dy = pos.y - e.y;
+                    if (dist > 1e-6f) {
+                        dx /= dist;
+                        dy /= dist;
+                    } else {
+                        dx = 1.0f;
+                        dy = 0.0f;
+                    }
+                    push_x += dx * overlap * sep.strength;
+                    push_y += dy * overlap * sep.strength;
+                });
+
+            vel.dx += push_x;
+            vel.dy += push_y;
         });
     return count;
 }
