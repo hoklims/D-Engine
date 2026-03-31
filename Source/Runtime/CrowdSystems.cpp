@@ -80,8 +80,8 @@ static bool lod_should_skip(const BehaviorLod& lod) {
 //  classify_behavior_lod
 // -----------------------------------------------------------------------
 // Assign a LOD tier to each crowd agent based on engagement state and
-// distance to battle center (0,0).  Engaged agents are always T0.
-// Must run BEFORE any gated system.
+// distance to the explicit battle center (cfg.center_x/y).
+// Engaged agents are always T0.  Must run BEFORE any gated system.
 
 uint32_t classify_behavior_lod(WorldView& view, float /*dt*/,
                                CommandBuffer& /*cmds*/) {
@@ -112,8 +112,10 @@ uint32_t classify_behavior_lod(WorldView& view, float /*dt*/,
                 lod.tier   = 0;
                 lod.stride = k_lod_strides[0];
             } else {
-                // Distance to battle center (0, 0).
-                float dist = std::sqrt(pos.x * pos.x + pos.y * pos.y);
+                // Distance to explicit battle center.
+                float cx = pos.x - cfg.center_x;
+                float cy = pos.y - cfg.center_y;
+                float dist = std::sqrt(cx * cx + cy * cy);
                 if (dist < cfg.t1_distance) {
                     lod.tier   = 0;
                     lod.stride = k_lod_strides[0];

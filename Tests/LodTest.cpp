@@ -335,6 +335,185 @@ static void test_lod_tier_sum_invariant() {
 }
 
 // =================================================================
+//  Translated scene produces identical LOD as origin scene
+// =================================================================
+
+static void collect_lod_tiers(de::SimState& sim, uint8_t* out, uint32_t max) {
+    uint32_t idx = 0;
+    sim.world.each<de::CrowdAgent, de::BehaviorLod>(
+        [&](de::EntityId, de::CrowdAgent&, de::BehaviorLod& lod) {
+            if (idx < max) out[idx++] = lod.tier;
+        });
+}
+
+static void test_lod_translation_invariant_close() {
+    // Reference scene at origin.
+    de::CrowdConfig cfg;
+    cfg.agents_per_team = 5;
+    cfg.team_spacing    = 20.0f;
+
+    de::SimState sim_ref;
+    sim_ref.bootstrap_crowd(cfg);
+    sim_ref.tick(1.0);
+
+    uint8_t ref_tiers[10] = {};
+    collect_lod_tiers(sim_ref, ref_tiers, 10);
+    de::SimSnapshot snap_ref = sim_ref.snapshot();
+
+    // Same scene translated far from origin (5000, 3000).
+    // A naive distance-to-origin would produce T3 for everyone.
+    de::CrowdConfig cfg2;
+    cfg2.agents_per_team = 5;
+    cfg2.team_spacing    = 20.0f;
+
+    de::SimState sim_tr;
+    sim_tr.bootstrap_crowd(cfg2);
+
+    // Translate all agents and goals by (5000, 3000).
+    constexpr float tx = 5000.0f;
+    constexpr float ty = 3000.0f;
+    sim_tr.world.each<de::CrowdAgent, de::Position, de::BattleGoal>(
+        [](de::EntityId, de::CrowdAgent&, de::Position& p, de::BattleGoal& g) {
+            p.x += tx;
+            p.y += ty;
+            g.x += tx;
+            g.y += ty;
+        });
+    // Shift LOD center to match the translated scene.
+    float orig_cy = static_cast<float>(cfg2.agents_per_team - 1)
+                    * cfg2.agent_spread * 0.5f;
+    sim_tr.set_lod_center(tx, ty + orig_cy);
+
+    sim_tr.tick(1.0);
+
+    uint8_t tr_tiers[10] = {};
+    collect_lod_tiers(sim_tr, tr_tiers, 10);
+    de::SimSnapshot snap_tr = sim_tr.snapshot();
+
+    // Tier distributions must be identical.
+    bool tiers_match = true;
+    for (int i = 0; i < 10; ++i) {
+        if (ref_tiers[i] != tr_tiers[i]) tiers_match = false;
+    }
+    check(tiers_match,
+          "lod_translate_close: translated scene has same per-agent tiers");
+
+    for (int t = 0; t < 4; ++t) {
+        check(snap_ref.lod_tier_counts[t] == snap_tr.lod_tier_counts[t],
+              "lod_translate_close: tier count distribution identical");
+    }
+}
+
+static void test_lod_translation_invariant_distant() {
+    // Distant scene at origin: agents far from center -> T2.
+    de::CrowdConfig cfg;
+    cfg.agents_per_team = 3;
+    cfg.team_spacing    = 80.0f;
+    cfg.engage_radius   = 1.0f;
+
+    de::SimState sim_ref;
+    sim_ref.bootstrap_crowd(cfg);
+    sim_ref.tick(1.0);
+
+    uint8_t ref_tiers[6] = {};
+    collect_lod_tiers(sim_ref, ref_tiers, 6);
+
+    // Same scene translated to (-8000, 4000).
+    constexpr float tx = -8000.0f;
+    constexpr float ty =  4000.0f;
+
+    de::SimState sim_tr;
+    sim_tr.bootstrap_crowd(cfg);
+    sim_tr.world.each<de::CrowdAgent, de::Position, de::BattleGoal>(
+        [](de::EntityId, de::CrowdAgent&, de::Position& p, de::BattleGoal& g) {
+            p.x += tx;
+            p.y += ty;
+            g.x += tx;
+            g.y += ty;
+        });
+    float orig_cy = static_cast<float>(cfg.agents_per_team - 1)
+                    * cfg.agent_spread * 0.5f;
+    sim_tr.set_lod_center(tx, ty + orig_cy);
+
+    sim_tr.tick(1.0);
+
+    uint8_t tr_tiers[6] = {};
+    collect_lod_tiers(sim_tr, tr_tiers, 6);
+
+    bool tiers_match = true;
+    for (int i = 0; i < 6; ++i) {
+        if (ref_tiers[i] != tr_tiers[i]) tiers_match = false;
+    }
+    check(tiers_match,
+          "lod_translate_distant: translated scene same tiers (T2)");
+}
+
+// =================================================================
+//  No stale center between bootstrap cycles
+// =================================================================
+
+static void test_lod_no_stale_center() {
+    // Bootstrap a translated scene, shutdown, bootstrap origin scene.
+    // The second bootstrap must NOT keep the old center.
+    de::CrowdConfig cfg;
+    cfg.agents_per_team = 3;
+    cfg.team_spacing    = 20.0f;
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+
+    // Manually shift center (simulating a translated scene).
+    sim.set_lod_center(9999.0f, 9999.0f);
+
+    sim.shutdown();
+
+    // Re-bootstrap at origin.
+    sim.bootstrap_crowd(cfg);
+    sim.tick(1.0);
+
+    // All agents should be T0 (close to origin center, not 9999).
+    bool all_t0 = true;
+    sim.world.each<de::CrowdAgent, de::BehaviorLod>(
+        [&](de::EntityId, de::CrowdAgent&, de::BehaviorLod& lod) {
+            if (lod.tier != 0) all_t0 = false;
+        });
+    check(all_t0,
+          "lod_no_stale: re-bootstrap clears old center, agents are T0");
+}
+
+// =================================================================
+//  Battlefield bootstrap center is coherent with nav goals
+// =================================================================
+
+static void test_lod_battlefield_center_coherent() {
+    de::BattlefieldConfig bf;
+    bf.crowd.agents_per_team = 3;
+    bf.crowd.team_spacing    = 15.0f;
+
+    de::SimState sim;
+    sim.bootstrap_battlefield(bf);
+    sim.tick(1.0);
+
+    // Center derived from crowd geometry: (0, (3-1)*2/2) = (0, 2).
+    // All agents at x=+-15, y=0..4.  Max dist = sqrt(225+4) ~ 15.1 < 30.
+    // All should be T0.
+    bool all_t0 = true;
+    sim.world.each<de::CrowdAgent, de::BehaviorLod>(
+        [&](de::EntityId, de::CrowdAgent&, de::BehaviorLod& lod) {
+            if (lod.tier != 0) all_t0 = false;
+        });
+    check(all_t0,
+          "lod_battlefield: center coherent, all agents T0");
+
+    // Verify tier sum invariant.
+    de::SimSnapshot snap = sim.snapshot();
+    uint32_t tier_sum = 0;
+    for (int t = 0; t < 4; ++t) tier_sum += snap.lod_tier_counts[t];
+    check(tier_sum == snap.crowd_agent_count,
+          "lod_battlefield: tier sum == crowd_agent_count");
+}
+
+// =================================================================
 //  Main
 // =================================================================
 
@@ -351,6 +530,10 @@ int main() {
     test_lod_snapshot_coherent_after_deaths();
     test_lod_skipped_unique_agents();
     test_lod_tier_sum_invariant();
+    test_lod_translation_invariant_close();
+    test_lod_translation_invariant_distant();
+    test_lod_no_stale_center();
+    test_lod_battlefield_center_coherent();
 
     std::printf("\n--- LodTest: %d passed, %d failed ---\n", g_pass, g_fail);
     return g_fail > 0 ? 1 : 0;

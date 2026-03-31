@@ -101,8 +101,16 @@ void SimState::bootstrap_crowd(const CrowdConfig& cfg) {
 
     register_crowd_systems();
 
+    // Derive battle center from team geometry (midpoint of the two spawns).
+    float team0_x = -cfg.team_spacing;
+    float team1_x =  cfg.team_spacing;
+    float center_x = (team0_x + team1_x) * 0.5f;
+    float center_y = static_cast<float>(cfg.agents_per_team - 1) * cfg.agent_spread * 0.5f;
+    lod_config_.center_x = center_x;
+    lod_config_.center_y = center_y;
+
     for (int team = 0; team < 2; ++team) {
-        float base_x = (team == 0) ? -cfg.team_spacing : cfg.team_spacing;
+        float base_x = (team == 0) ? team0_x : team1_x;
         for (int i = 0; i < cfg.agents_per_team; ++i) {
             EntityId e = world.create();
             world.set(e, CrowdAgent{});
@@ -118,7 +126,7 @@ void SimState::bootstrap_crowd(const CrowdConfig& cfg) {
             world.set(e, AttackCooldown{0.0f, cfg.attack_interval});
             world.set(e, Separation{cfg.separation_radius, cfg.separation_strength});
             // Goal: advance toward the opposing team's spawn.
-            float goal_x = (team == 0) ? cfg.team_spacing : -cfg.team_spacing;
+            float goal_x = (team == 0) ? team1_x : team0_x;
             world.set(e, BattleGoal{goal_x, 0.0f});
             world.set(e, EngageRadius{cfg.engage_radius});
             world.set(e, BehaviorLod{});
@@ -170,6 +178,11 @@ void SimState::bootstrap_battlefield(const BattlefieldConfig& cfg) {
     // Build initial flow fields and install pointers.
     build_nav_fields();
     set_battlefield_grids(nav_grid_ptrs_, k_max_teams);
+}
+
+void SimState::set_lod_center(float cx, float cy) {
+    lod_config_.center_x = cx;
+    lod_config_.center_y = cy;
 }
 
 void SimState::build_nav_fields() {

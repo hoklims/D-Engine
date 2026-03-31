@@ -134,6 +134,8 @@ struct SimState {
 
     void add_system(const char* name, FixedSystemFn fn);
 
+    void set_lod_center(float cx, float cy);
+
     SimSnapshot snapshot() const;
     uint32_t    system_count() const;
 

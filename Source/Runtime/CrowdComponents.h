@@ -66,7 +66,8 @@ struct Separation {
 //
 // Classification criteria (simple, deterministic):
 //   - engaged agents (enemy within EngageRadius) are always T0
-//   - other agents: tier based on distance to battle center (0,0)
+//   - other agents: tier based on distance to battle center
+//     (explicit center_x/y in BehaviorLodConfig, not origin)
 //
 // Invariant: combat systems (AttackTargets, ResolveDamage, RemoveDead)
 // and physics integration always run for ALL agents regardless of tier.
@@ -80,10 +81,13 @@ static constexpr uint8_t k_lod_tier_count = 4;
 static constexpr uint8_t k_lod_strides[k_lod_tier_count] = {1, 2, 4, 8};
 
 // Configurable distance thresholds for LOD classification.
+// center_x/y = explicit battle center (set by bootstrap, not origin).
 struct BehaviorLodConfig {
     float t1_distance = 30.0f;   // beyond this -> T1
     float t2_distance = 60.0f;   // beyond this -> T2
     float t3_distance = 100.0f;  // beyond this -> T3
+    float center_x    = 0.0f;    // battle center X
+    float center_y    = 0.0f;    // battle center Y
 };
 
 }  // namespace de
