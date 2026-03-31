@@ -44,6 +44,9 @@ Makefile
 *.opensdf
 *.tlog
 
+# CMake user presets (local)
+CMakeUserPresets.json
+
 # Compiled Object files
 *.slo
 *.lo

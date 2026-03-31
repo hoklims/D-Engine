@@ -101,3 +101,30 @@ Decision:
 Pourquoi:
 
 - D-Engine 2.0 cherche une longueur d'avance, pas une instabilite inutile.
+
+## DL-010 - CMake comme systeme de build
+
+Decision:
+
+- le systeme de build 2.0 est CMake 3.28+ avec le generateur Visual Studio 2022.
+
+Pourquoi:
+
+- standard industrie pour C++ multi-fichiers,
+- support natif de C++23 avec MSVC,
+- produit un .sln compatible avec l'IDE Visual Studio,
+- simple a etendre avec add_subdirectory quand le moteur grandit,
+- presets JSON pour des builds reproductibles.
+
+## DL-011 - Win32 API directe pour la fenetre
+
+Decision:
+
+- la fenetre est creee via Win32 API sans wrapper tiers (pas GLFW, pas SDL).
+
+Pourquoi:
+
+- Windows-first elimine le besoin d'abstraction portable,
+- controle total sur la boucle de messages,
+- zero dependance externe,
+- alignement direct avec le futur swapchain DX12.

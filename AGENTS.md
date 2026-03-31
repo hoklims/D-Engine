@@ -8,30 +8,34 @@ Docs complementaires:
 
 - `Docs/2.0/INDEX.md`
 
-Les documents `v0.x` restent lisibles mais sont historiques sur cette branche.
-
 ## Quick commands
 
-Historique build/runtime actuel:
+Configure (once):
 
-- `msbuild D-Engine.sln /p:Configuration=Debug /p:Platform=x64 /m`
-- `msbuild D-Engine.sln /p:Configuration=Release /p:Platform=x64 /m`
+- `cmake --preset default`
 
-Run local gates:
+Build:
 
-- `powershell -ExecutionPolicy Bypass -File tools/run_all_gates.ps1`
+- `cmake --build Build --config Debug`
+- `cmake --build Build --config Release`
 
-Run smokes:
+Run:
 
-- `x64\Debug\AllSmokes.exe`
-- `x64\Release\AllSmokes.exe`
-- `x64\Release\MemoryStressSmokes.exe`
+- `./Build/Source/Debug/DEngine.exe`
+- `./Build/Source/Release/DEngine.exe`
 
-Run benchmarks:
+## Stack
 
-- `x64\Release\D-Engine-BenchRunner.exe --warmup 1 --target-rsd 3 --max-repeat 20 --cpu-info`
+- C++23, MSVC, CMake 3.28+
+- Win32 API (window/platform)
+- DirectX 12 + HLSL (future)
 
-Regle de branche:
+## Repository map
+
+- Source/Runtime/: entry point, engine loop, clock
+- Source/Platform/: Win32 window
+
+## Regle de branche
 
 - tout le travail 2.0 se fait sur `de-engine-2.0`
 - `main` sert d'etat historique et ne doit pas etre modifiee par ce chantier
