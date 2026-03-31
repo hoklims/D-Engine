@@ -240,6 +240,101 @@ static void test_lod_snapshot_telemetry() {
 }
 
 // =================================================================
+//  Snapshot coherent after deaths (tier counts = living agents)
+// =================================================================
+
+static void test_lod_snapshot_coherent_after_deaths() {
+    // One-hit-kill scene: all agents die on tick 0.
+    de::CrowdConfig cfg;
+    cfg.agents_per_team = 5;
+    cfg.team_spacing    = 0.5f;   // teams very close -> immediate combat
+    cfg.agent_spread    = 0.1f;
+    cfg.health          = 1.0f;   // one-hit kill
+    cfg.attack_range    = 50.0f;  // everyone in range
+    cfg.attack_damage   = 100.0f;
+    cfg.attack_interval = 0.0f;   // instant
+    cfg.engage_radius   = 200.0f;
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+
+    // Tick 0: everyone attacks, everyone dies (deferred destroy).
+    sim.tick(1.0);
+    de::SimSnapshot snap0 = sim.snapshot();
+
+    // Deaths happened this tick.
+    check(snap0.deaths_this_tick > 0,
+          "lod_death_coherence: deaths occurred");
+
+    // Tier counts must sum to the living agent count in the snapshot.
+    uint32_t tier_sum = 0;
+    for (int t = 0; t < 4; ++t) tier_sum += snap0.lod_tier_counts[t];
+    check(tier_sum == snap0.crowd_agent_count,
+          "lod_death_coherence: tier_counts sum == crowd_agent_count");
+
+    // Tick 1: cull_pre_dead finishes remaining, world empties.
+    sim.tick(1.0);
+    de::SimSnapshot snap1 = sim.snapshot();
+
+    uint32_t tier_sum1 = 0;
+    for (int t = 0; t < 4; ++t) tier_sum1 += snap1.lod_tier_counts[t];
+    check(tier_sum1 == snap1.crowd_agent_count,
+          "lod_death_coherence: tier_counts sum == 0 when all dead");
+    check(snap1.crowd_agent_count == 0,
+          "lod_death_coherence: no agents left after full wipe");
+}
+
+// =================================================================
+//  lod_skipped_this_tick counts unique agents, not system skips
+// =================================================================
+
+static void test_lod_skipped_unique_agents() {
+    // All agents far from center -> T2 (stride=4).
+    de::CrowdConfig cfg;
+    cfg.agents_per_team = 5;
+    cfg.team_spacing    = 80.0f;
+    cfg.engage_radius   = 1.0f;
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+
+    // Tick 0: stride=4, tick%4==0 -> on-tick, nobody skipped.
+    sim.tick(1.0);
+    de::SimSnapshot snap0 = sim.snapshot();
+    check(snap0.lod_skipped_this_tick == 0,
+          "lod_unique_skip: tick 0 on-tick, 0 skipped");
+
+    // Tick 1: off-tick, all 10 agents skipped.
+    sim.tick(1.0);
+    de::SimSnapshot snap1 = sim.snapshot();
+    check(snap1.lod_skipped_this_tick == 10,
+          "lod_unique_skip: tick 1, exactly 10 unique agents skipped");
+
+    // The count must NOT be 20 (which would happen if double-counted
+    // across ComputeBattleGoal + ApplySeparation).
+    check(snap1.lod_skipped_this_tick <= 10,
+          "lod_unique_skip: no double-counting across systems");
+}
+
+// =================================================================
+//  lod_tier_counts always sums to crowd_agent_count
+// =================================================================
+
+static void test_lod_tier_sum_invariant() {
+    de::SimState sim;
+    sim.bootstrap_crowd();
+
+    for (int i = 0; i < 8; ++i) {
+        sim.tick(1.0);
+        de::SimSnapshot snap = sim.snapshot();
+        uint32_t tier_sum = 0;
+        for (int t = 0; t < 4; ++t) tier_sum += snap.lod_tier_counts[t];
+        check(tier_sum == snap.crowd_agent_count,
+              "lod_tier_sum: tier_counts sum == crowd_agent_count");
+    }
+}
+
+// =================================================================
 //  Main
 // =================================================================
 
@@ -253,6 +348,9 @@ int main() {
     test_lod_t0_never_skipped();
     test_lod_combat_not_gated();
     test_lod_snapshot_telemetry();
+    test_lod_snapshot_coherent_after_deaths();
+    test_lod_skipped_unique_agents();
+    test_lod_tier_sum_invariant();
 
     std::printf("\n--- LodTest: %d passed, %d failed ---\n", g_pass, g_fail);
     return g_fail > 0 ? 1 : 0;

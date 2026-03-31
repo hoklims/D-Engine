@@ -129,6 +129,7 @@ uint32_t classify_behavior_lod(WorldView& view, float /*dt*/,
                 }
             }
             ++s_lod_counts[lod.tier];
+            if (lod_should_skip(lod)) ++s_lod_skipped;
         });
     return count;
 }
@@ -185,7 +186,7 @@ uint32_t compute_battle_goal(WorldView& view, float /*dt*/,
             BattleGoal& goal, DesiredDirection& dir, BehaviorLod& lod) {
             // LOD gating: skip non-T0 agents on off-ticks.
             // Their DesiredDirection from the last update is preserved.
-            if (lod_should_skip(lod)) { ++s_lod_skipped; return; }
+            if (lod_should_skip(lod)) { return; }
             ++count;
 
             // When navigation grids are installed, the flow field is
@@ -386,7 +387,7 @@ uint32_t apply_separation(WorldView& view, float /*dt*/,
         [&](EntityId self, CrowdAgent&, Position& pos,
             Velocity& vel, Separation& sep, MoveSpeed& spd, BehaviorLod& lod) {
             // LOD gating: skip separation for non-T0 agents on off-ticks.
-            if (lod_should_skip(lod)) { ++s_lod_skipped; return; }
+            if (lod_should_skip(lod)) { return; }
             ++count;
             float push_x = 0.0f;
             float push_y = 0.0f;

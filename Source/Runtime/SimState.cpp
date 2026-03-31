@@ -208,10 +208,6 @@ void SimState::tick(double step_dt) {
     agents_engaged_                 = crowd_agents_engaged_this_tick();
     nav_queries_this_tick_          = crowd_nav_queries_this_tick();
     nav_failures_this_tick_         = crowd_nav_failures_this_tick();
-    for (uint8_t t = 0; t < k_lod_tier_count; ++t)
-        lod_tier_counts_[t] = crowd_lod_tier_count(t);
-    lod_skipped_this_tick_          = crowd_lod_skipped_this_tick();
-
     cmds_queued_last_ = cmds_.pending();
     cmds_.apply(world);
     cmds_applied_last_ = cmds_.last_applied_count();
@@ -302,6 +298,8 @@ void SimState::update_crowd_stats() {
     crowd_agent_count_  = 0;
     agents_with_target_ = 0;
     for (auto& c : team_counts_) c = 0;
+    for (auto& c : lod_tier_counts_) c = 0;
+    lod_skipped_this_tick_ = 0;
 
     world.each<CrowdAgent, Team, Target>(
         [&](EntityId, CrowdAgent&, Team& team, Target& tgt) {
@@ -309,6 +307,16 @@ void SimState::update_crowd_stats() {
             if (team.id < k_max_teams) ++team_counts_[team.id];
             if (tgt.has_target && world.alive(tgt.entity))
                 ++agents_with_target_;
+        });
+
+    // LOD metrics: recount on the living world (post-apply) so the
+    // snapshot is coherent with crowd_agent_count_ and team_counts_.
+    world.each<CrowdAgent, BehaviorLod>(
+        [&](EntityId, CrowdAgent&, BehaviorLod& lod) {
+            if (lod.tier < k_lod_tier_count)
+                ++lod_tier_counts_[lod.tier];
+            if (lod.stride > 1 && (tick_count_ % lod.stride) != 0)
+                ++lod_skipped_this_tick_;
         });
 }
 
