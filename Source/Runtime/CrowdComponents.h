@@ -42,6 +42,13 @@ struct AttackCooldown {
     float interval  = 1.0f;   // seconds between attacks
 };
 
+// Strategic rally point for the agent's team.
+struct BattleGoal { float x = 0.0f; float y = 0.0f; };
+
+// Distance threshold: enemy must be within this radius for the agent
+// to switch from strategic (goal) to tactical (pursuit) mode.
+struct EngageRadius { float radius = 15.0f; };
+
 // Local separation -- soft repulsion from nearby agents.
 struct Separation {
     float radius   = 0.8f;   // personal space (units)

@@ -198,26 +198,28 @@ static void test_crowd_system_order() {
     sim.tick(1.0);
 
     de::SimSnapshot snap = sim.snapshot();
-    check(snap.system_count == 9, "system_order: 9 systems registered");
+    check(snap.system_count == 10, "system_order: 10 systems registered");
 
     check(std::strcmp(snap.systems[0].name, "SelectTargets") == 0,
           "system_order: [0] SelectTargets");
-    check(std::strcmp(snap.systems[1].name, "ComputeDesiredMove") == 0,
-          "system_order: [1] ComputeDesiredMove");
-    check(std::strcmp(snap.systems[2].name, "ApplyCrowdSteer") == 0,
-          "system_order: [2] ApplyCrowdSteer");
-    check(std::strcmp(snap.systems[3].name, "ApplySeparation") == 0,
-          "system_order: [3] ApplySeparation");
-    check(std::strcmp(snap.systems[4].name, "AttackTargets") == 0,
-          "system_order: [4] AttackTargets");
-    check(std::strcmp(snap.systems[5].name, "ResolveDamage") == 0,
-          "system_order: [5] ResolveDamage");
-    check(std::strcmp(snap.systems[6].name, "RemoveDead") == 0,
-          "system_order: [6] RemoveDead");
-    check(std::strcmp(snap.systems[7].name, "IntegrateVelocity") == 0,
-          "system_order: [7] IntegrateVelocity");
-    check(std::strcmp(snap.systems[8].name, "IntegratePosition") == 0,
-          "system_order: [8] IntegratePosition");
+    check(std::strcmp(snap.systems[1].name, "ComputeBattleGoal") == 0,
+          "system_order: [1] ComputeBattleGoal");
+    check(std::strcmp(snap.systems[2].name, "ComputeDesiredMove") == 0,
+          "system_order: [2] ComputeDesiredMove");
+    check(std::strcmp(snap.systems[3].name, "ApplyCrowdSteer") == 0,
+          "system_order: [3] ApplyCrowdSteer");
+    check(std::strcmp(snap.systems[4].name, "ApplySeparation") == 0,
+          "system_order: [4] ApplySeparation");
+    check(std::strcmp(snap.systems[5].name, "AttackTargets") == 0,
+          "system_order: [5] AttackTargets");
+    check(std::strcmp(snap.systems[6].name, "ResolveDamage") == 0,
+          "system_order: [6] ResolveDamage");
+    check(std::strcmp(snap.systems[7].name, "RemoveDead") == 0,
+          "system_order: [7] RemoveDead");
+    check(std::strcmp(snap.systems[8].name, "IntegrateVelocity") == 0,
+          "system_order: [8] IntegrateVelocity");
+    check(std::strcmp(snap.systems[9].name, "IntegratePosition") == 0,
+          "system_order: [9] IntegratePosition");
 }
 
 // =================================================================
@@ -288,8 +290,8 @@ static void test_crowd_bootstrap_idempotent() {
     de::SimSnapshot snap = sim.snapshot();
     check(snap.tick_count == 0,
           "crowd_idempotent: tick_count reset");
-    check(snap.system_count == 9,
-          "crowd_idempotent: 9 systems, not 18");
+    check(snap.system_count == 10,
+          "crowd_idempotent: 10 systems, not 20");
     check(snap.crowd_agent_count == 20,
           "crowd_idempotent: crowd metrics correct after re-bootstrap");
 }
@@ -1116,6 +1118,157 @@ static void test_separation_speed_clamp() {
 }
 
 // =================================================================
+//  Battle goal: agents follow goal when no enemy is close
+// =================================================================
+
+static void test_goal_follow_without_enemy() {
+    // Large engage_radius but huge spacing so enemies are far away.
+    de::CrowdConfig cfg;
+    cfg.agents_per_team = 3;
+    cfg.team_spacing    = 500.0f;     // enemies 1000 units apart
+    cfg.engage_radius   = 15.0f;     // way below 1000
+    cfg.health          = 10000.0f;
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+
+    // Team 0 starts at x=-500, goal at x=+500.
+    float x0_before = sim.world.get<de::Position>(de::EntityId{0,1})->x;
+    sim.tick(1.0);
+    float x0_after  = sim.world.get<de::Position>(de::EntityId{0,1})->x;
+
+    check(x0_after > x0_before,
+          "goal_follow: team 0 moved toward goal (+X)");
+
+    // Team 1 starts at x=+500, goal at x=-500.
+    float x1_before_approx = 500.0f;  // initial spawn
+    float x1_after = sim.world.get<de::Position>(de::EntityId{3,1})->x;
+    check(x1_after < x1_before_approx,
+          "goal_follow: team 1 moved toward goal (-X)");
+
+    // No agent should be engaged (enemies too far).
+    de::SimSnapshot snap = sim.snapshot();
+    check(snap.agents_engaged == 0,
+          "goal_follow: zero agents engaged when enemies far");
+}
+
+// =================================================================
+//  Battle goal: two teams converge toward each other
+// =================================================================
+
+static void test_goal_convergence() {
+    de::CrowdConfig cfg;
+    cfg.agents_per_team = 5;
+    cfg.team_spacing    = 100.0f;
+    cfg.engage_radius   = 15.0f;
+    cfg.health          = 10000.0f;
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+
+    // Run several ticks.
+    for (int i = 0; i < 10; ++i) sim.tick(1.0);
+
+    // Compute average x per team -- they should have moved closer.
+    float sum_t0 = 0.0f, sum_t1 = 0.0f;
+    int n0 = 0, n1 = 0;
+    sim.world.each<de::CrowdAgent, de::Team, de::Position>(
+        [&](de::EntityId, de::CrowdAgent&, de::Team& t, de::Position& p) {
+            if (t.id == 0) { sum_t0 += p.x; ++n0; }
+            else           { sum_t1 += p.x; ++n1; }
+        });
+    float avg0 = sum_t0 / static_cast<float>(n0);
+    float avg1 = sum_t1 / static_cast<float>(n1);
+
+    check(avg0 > -100.0f, "goal_converge: team 0 advanced from spawn");
+    check(avg1 <  100.0f, "goal_converge: team 1 advanced from spawn");
+    check(avg0 < avg1,    "goal_converge: teams moved toward each other");
+}
+
+// =================================================================
+//  Battle goal: engagement overrides goal when enemy is close
+// =================================================================
+
+static void test_goal_engage_overrides() {
+    de::CrowdConfig cfg;
+    cfg.agents_per_team = 1;
+    cfg.team_spacing    = 5.0f;   // enemies 10 units apart
+    cfg.engage_radius   = 15.0f;  // enemies within range
+    cfg.health          = 10000.0f;
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+    sim.tick(1.0);
+
+    de::SimSnapshot snap = sim.snapshot();
+    check(snap.agents_engaged == 2,
+          "goal_engage: both agents engaged when close");
+
+    // Agent should be moving toward enemy, not toward goal.
+    // Team 0 at x=-5, enemy at x=+5, goal at x=+5 (same direction here).
+    // Team 1 at x=+5, enemy at x=-5, goal at x=-5 (same direction too).
+    // Better test: verify pursuit direction is toward the specific enemy.
+    auto* vel0 = sim.world.get<de::Velocity>(de::EntityId{0,1});
+    check(vel0 && vel0->dx > 0.0f,
+          "goal_engage: team 0 pursues enemy in +X");
+}
+
+// =================================================================
+//  Battle goal: separation still works alongside goals
+// =================================================================
+
+static void test_goal_separation_compat() {
+    de::CrowdConfig cfg;
+    cfg.agents_per_team     = 5;
+    cfg.team_spacing        = 200.0f;
+    cfg.agent_spread        = 0.1f;
+    cfg.separation_radius   = 0.8f;
+    cfg.separation_strength = 5.0f;
+    cfg.engage_radius       = 15.0f;
+    cfg.health              = 10000.0f;
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+    for (int i = 0; i < 10; ++i) sim.tick(0.1);
+
+    // Same-team agents should have spread apart (separation works).
+    float min_y = 1e9f, max_y = -1e9f;
+    sim.world.each<de::CrowdAgent, de::Team, de::Position>(
+        [&](de::EntityId, de::CrowdAgent&, de::Team& t, de::Position& p) {
+            if (t.id != 0) return;
+            if (p.y < min_y) min_y = p.y;
+            if (p.y > max_y) max_y = p.y;
+        });
+    check((max_y - min_y) > 0.5f,
+          "goal_sep: separation still spreads agents with battle goal");
+}
+
+// =================================================================
+//  Battle goal: snapshot telemetry is coherent
+// =================================================================
+
+static void test_goal_snapshot_coherent() {
+    de::CrowdConfig cfg;
+    cfg.agents_per_team = 5;
+    cfg.team_spacing    = 100.0f;
+    cfg.engage_radius   = 15.0f;
+    cfg.health          = 10000.0f;
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+    sim.tick(1.0);
+
+    de::SimSnapshot snap = sim.snapshot();
+    // Enemies are 200 units apart, engage_radius=15 => nobody engaged.
+    check(snap.agents_engaged == 0,
+          "goal_snap: no engagement when teams far apart");
+    check(snap.crowd_agent_count == 10,
+          "goal_snap: all agents alive");
+    check(snap.agents_with_target == 10,
+          "goal_snap: all agents have targeting info");
+}
+
+// =================================================================
 //  main
 // =================================================================
 
@@ -1169,6 +1322,13 @@ int main() {
     test_separation_exact_overlap();
     test_separation_exact_overlap_midpoint();
     test_separation_speed_clamp();
+
+    // Battle goal tests
+    test_goal_follow_without_enemy();
+    test_goal_convergence();
+    test_goal_engage_overrides();
+    test_goal_separation_compat();
+    test_goal_snapshot_coherent();
 
     std::printf("\nCrowdTest results: %d passed, %d failed\n",
                 g_pass, g_fail);

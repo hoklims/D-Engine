@@ -22,16 +22,19 @@ static uint32_t s_attacks_this_tick      = 0;
 static uint32_t s_deaths_this_tick       = 0;
 static uint32_t s_candidates_scanned     = 0;
 static uint32_t s_separation_pairs       = 0;
+static uint32_t s_agents_engaged         = 0;
 
 uint32_t crowd_attacks_this_tick()            { return s_attacks_this_tick; }
 uint32_t crowd_deaths_queued_this_tick()      { return s_deaths_this_tick; }
 uint32_t crowd_candidates_scanned_this_tick() { return s_candidates_scanned; }
 uint32_t crowd_separation_pairs_this_tick()   { return s_separation_pairs; }
+uint32_t crowd_agents_engaged_this_tick()     { return s_agents_engaged; }
 void     reset_crowd_tick_counters() {
     s_attacks_this_tick  = 0;
     s_deaths_this_tick   = 0;
     s_candidates_scanned = 0;
     s_separation_pairs   = 0;
+    s_agents_engaged     = 0;
     s_hit_buffer.clear();
 }
 
@@ -74,34 +77,63 @@ uint32_t select_targets(WorldView& view, float /*dt*/, CommandBuffer& /*cmds*/) 
 }
 
 // -----------------------------------------------------------------------
+//  compute_battle_goal
+// -----------------------------------------------------------------------
+// Strategic layer: set desired direction toward the team's rally point.
+// Runs before compute_desired_movement so pursuit can override.
+
+uint32_t compute_battle_goal(WorldView& view, float /*dt*/,
+                             CommandBuffer& /*cmds*/) {
+    uint32_t count = 0;
+    view.each<CrowdAgent, Position, BattleGoal, DesiredDirection>(
+        [&](EntityId, CrowdAgent&, Position& pos,
+            BattleGoal& goal, DesiredDirection& dir) {
+            ++count;
+            float dx  = goal.x - pos.x;
+            float dy  = goal.y - pos.y;
+            float len = std::sqrt(dx * dx + dy * dy);
+            if (len > 1e-6f) {
+                dir.dx = dx / len;
+                dir.dy = dy / len;
+            } else {
+                dir.dx = 0.0f;
+                dir.dy = 0.0f;
+            }
+        });
+    return count;
+}
+
+// -----------------------------------------------------------------------
 //  compute_desired_movement
 // -----------------------------------------------------------------------
-// Turns a target into a normalised direction vector.
+// Tactical override: if the nearest enemy is within EngageRadius, switch
+// from battle-goal direction to local pursuit.  If in attack range, stop.
+// If no enemy is close enough, the battle-goal direction is preserved.
 
 uint32_t compute_desired_movement(WorldView& view, float /*dt*/,
                                   CommandBuffer& /*cmds*/) {
+    s_agents_engaged = 0;
     uint32_t count = 0;
-    view.each<CrowdAgent, Position, Target, DesiredDirection, AttackRange>(
+    view.each<CrowdAgent, Position, Target, DesiredDirection,
+              AttackRange, EngageRadius>(
         [&](EntityId, CrowdAgent&, Position& pos,
-            Target& tgt, DesiredDirection& dir, AttackRange& atk_range) {
+            Target& tgt, DesiredDirection& dir,
+            AttackRange& atk_range, EngageRadius& engage) {
             ++count;
 
-            if (!tgt.has_target || !view.alive(tgt.entity)) {
-                dir.dx = 0.0f;
-                dir.dy = 0.0f;
-                return;
-            }
+            if (!tgt.has_target || !view.alive(tgt.entity)) return;
 
             const auto* tp = view.get<Position>(tgt.entity);
-            if (!tp) {
-                dir.dx = 0.0f;
-                dir.dy = 0.0f;
-                return;
-            }
+            if (!tp) return;
 
             float dx  = tp->x - pos.x;
             float dy  = tp->y - pos.y;
             float len = std::sqrt(dx * dx + dy * dy);
+
+            // Outside engage radius -- keep battle-goal direction.
+            if (len > engage.radius) return;
+
+            ++s_agents_engaged;
 
             // In attack range -- stop moving, fight instead.
             if (len <= atk_range.range) {
@@ -110,12 +142,10 @@ uint32_t compute_desired_movement(WorldView& view, float /*dt*/,
                 return;
             }
 
+            // Within engage range -- pursue target.
             if (len > 1e-6f) {
                 dir.dx = dx / len;
                 dir.dy = dy / len;
-            } else {
-                dir.dx = 0.0f;
-                dir.dy = 0.0f;
             }
         });
     return count;

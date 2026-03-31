@@ -15,9 +15,14 @@ namespace de {
 //   (direct World::destroy, not CommandBuffer).  They never act.
 //
 // Pipeline order:
-//   SelectTargets > ComputeDesiredMove > ApplyCrowdSteer >
+//   SelectTargets > ComputeBattleGoal > ComputeDesiredMove >
+//   ApplyCrowdSteer > ApplySeparation >
 //   AttackTargets > ResolveDamage > RemoveDead >
 //   IntegrateVelocity > IntegratePosition
+//
+// ComputeBattleGoal sets DesiredDirection toward the strategic rally
+// point.  ComputeDesiredMove overrides it with local pursuit when the
+// nearest enemy is within EngageRadius.
 //
 // AttackTargets produces hit events into a buffer without modifying HP.
 // ResolveDamage consumes the buffer and applies all damage at once.
@@ -31,8 +36,13 @@ namespace de {
 // Pick the nearest enemy as pursuit target.
 uint32_t select_targets(WorldView& view, float dt, CommandBuffer& cmds);
 
-// Compute normalised desired direction toward current target.
-// Zeroes direction when target is within attack range (stop to fight).
+// Set desired direction toward BattleGoal (strategic layer).
+// ComputeDesiredMove may override this with local pursuit.
+uint32_t compute_battle_goal(WorldView& view, float dt, CommandBuffer& cmds);
+
+// Override desired direction with local pursuit when the nearest enemy
+// is within EngageRadius.  Zeroes direction inside attack range (stop to fight).
+// Leaves battle-goal direction intact when no enemy is close enough.
 uint32_t compute_desired_movement(WorldView& view, float dt, CommandBuffer& cmds);
 
 // Set velocity = desired_direction * move_speed (instant steering).
@@ -57,6 +67,7 @@ uint32_t crowd_attacks_this_tick();
 uint32_t crowd_deaths_queued_this_tick();
 uint32_t crowd_candidates_scanned_this_tick();
 uint32_t crowd_separation_pairs_this_tick();
+uint32_t crowd_agents_engaged_this_tick();
 void     reset_crowd_tick_counters();
 
 }  // namespace de
