@@ -59,6 +59,8 @@ void SimState::bootstrap() {
     melee_attacks_this_tick_     = 0;
     lod_config_                  = BehaviorLodConfig{};
     hash_history_.clear();
+    budget_config_ = SimBudgetConfig{};
+    budget_status_ = SimBudgetStatus{};
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -103,6 +105,8 @@ void SimState::bootstrap_crowd(const CrowdConfig& cfg) {
     melee_attacks_this_tick_     = 0;
     lod_config_                  = BehaviorLodConfig{};
     hash_history_.clear();
+    budget_config_ = SimBudgetConfig{};
+    budget_status_ = SimBudgetStatus{};
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -237,6 +241,7 @@ void SimState::tick(double step_dt) {
     cmds_applied_last_ = cmds_.last_applied_count();
 
     update_crowd_stats();
+    evaluate_budget();
 
     ++tick_count_;
 
@@ -272,6 +277,8 @@ void SimState::shutdown() {
     melee_attacks_this_tick_     = 0;
     lod_config_                  = BehaviorLodConfig{};
     hash_history_.clear();
+    budget_config_ = SimBudgetConfig{};
+    budget_status_ = SimBudgetStatus{};
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -306,6 +313,7 @@ SimSnapshot SimState::snapshot() const {
     snap.melee_broadphase_checks        = melee_bp_checks_;
     snap.melee_pairs_this_tick          = melee_pairs_this_tick_;
     snap.melee_attacks_this_tick        = melee_attacks_this_tick_;
+    snap.budget                         = budget_status_;
     return snap;
 }
 
@@ -377,6 +385,64 @@ void SimState::cull_pre_dead() {
         if (hp.current <= 0.0f) dead.push_back(id);
     });
     for (auto id : dead) world.destroy(id);
+}
+
+void SimState::set_budget_config(const SimBudgetConfig& cfg) {
+    budget_config_ = cfg;
+}
+
+const SimBudgetStatus& SimState::budget_status() const {
+    return budget_status_;
+}
+
+void SimState::evaluate_budget() {
+    budget_status_ = SimBudgetStatus{};
+
+    // Sum system timings and find hottest.
+    double total_s  = 0.0;
+    double hottest_s = 0.0;
+    uint32_t hottest_idx = 0;
+    for (uint32_t i = 0; i < system_count_; ++i) {
+        total_s += last_stats_[i].elapsed_s;
+        if (last_stats_[i].elapsed_s > hottest_s) {
+            hottest_s   = last_stats_[i].elapsed_s;
+            hottest_idx = i;
+        }
+    }
+
+    budget_status_.tick_elapsed_s   = total_s;
+    budget_status_.hottest_system_s = hottest_s;
+    if (system_count_ > 0)
+        std::memcpy(budget_status_.hottest_system,
+                    last_stats_[hottest_idx].name, k_system_name_max);
+
+    budget_status_.targeting_scanned = targeting_candidates_scanned_;
+    budget_status_.melee_checks      = melee_bp_checks_;
+    budget_status_.lod_t0_count      = lod_tier_counts_[0];
+
+    // Evaluate contracts.
+    if (total_s > budget_config_.max_tick_s) {
+        budget_status_.tick_over = true;
+        ++budget_status_.violation_count;
+    }
+    if (hottest_s > budget_config_.max_system_s) {
+        budget_status_.system_over = true;
+        ++budget_status_.violation_count;
+    }
+    if (targeting_candidates_scanned_ > budget_config_.max_targeting_scanned) {
+        budget_status_.targeting_over = true;
+        ++budget_status_.violation_count;
+    }
+    if (melee_bp_checks_ > budget_config_.max_melee_checks) {
+        budget_status_.melee_over = true;
+        ++budget_status_.violation_count;
+    }
+    if (lod_tier_counts_[0] > budget_config_.max_lod_t0_count) {
+        budget_status_.lod_t0_over = true;
+        ++budget_status_.violation_count;
+    }
+
+    budget_status_.within_budget = (budget_status_.violation_count == 0);
 }
 
 void SimState::add_system(const char* name, FixedSystemFn fn) {

@@ -20,15 +20,15 @@ Les blocs suivants existent deja dans la branche:
 - navigation obstacle-aware via `BattlefieldGrid`,
 - separation locale soft,
 - LOD comportemental a 4 tiers,
+- broadphase melee dedie,
 - combat simultane avec morts differees,
-- tests dedies runtime, ECS, crowd, navigation et LOD.
+- tests dedies runtime, ECS, crowd, navigation, LOD et melee.
 
 Les blocs suivants restent des cibles, pas encore des realites:
 
 - job system,
 - allocateurs temps reel,
 - replay/hash de simulation,
-- broadphase melee dediee,
 - extraction crowd vers le rendu,
 - rendu DX12.
 
@@ -172,7 +172,8 @@ Etat:
 
 - separation locale soft uniquement,
 - pas encore d'avoidance type ORCA,
-- pas encore de broadphase melee dediee.
+- broadphase melee dedie deja separe du simple targeting,
+- avoidance melee plus intelligente encore absente.
 
 ## 6. LOD comportemental
 
@@ -217,7 +218,10 @@ Contrat:
 
 Etat:
 
-- non implemente comme sous-systeme dedie.
+- implemente en version 1,
+- broadphase spatial borne via `SpatialGrid`,
+- generation de candidats melee dedies,
+- telemetry melee de base en place.
 
 ### Hit Resolution
 
@@ -233,7 +237,9 @@ Contrat:
 
 Etat:
 
-- implemente via buffer de hit events puis resolution simultanee.
+- implemente via broadphase melee puis buffer de hit events,
+- resolution simultanee conservee,
+- contrat "au plus un hit par agent et par tick" explicite.
 
 ### Reaction System
 
@@ -334,6 +340,7 @@ Etat:
 - compteurs crowd de base en place,
 - compteurs navigation de base en place,
 - compteurs LOD de base en place,
+- compteurs melee de base en place,
 - timings GPU et perf gates non implementes.
 
 ## 11. Budgets structurants

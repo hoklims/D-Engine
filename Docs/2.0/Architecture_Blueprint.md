@@ -32,15 +32,15 @@ Etat reel de la branche au 2026-03-31:
 - separation locale soft en place,
 - LOD comportemental a 4 tiers en place,
 - centre LOD explicite en place,
+- broadphase melee dedie en place,
 - combat simultane avec morts differees en place,
-- tests dedies runtime, ECS, crowd, navigation et LOD en place.
+- tests dedies runtime, ECS, crowd, navigation, LOD et melee en place.
 
 Ce qui reste hors du code aujourd'hui:
 
 - job system,
 - allocateurs temps reel,
 - replay/hash de simulation,
-- broadphase melee dediee,
 - rendu DX12 et extraction de frame crowd-first.
 
 ## Couches
@@ -111,11 +111,12 @@ Pipeline crowd actuellement implementee:
 4. `ComputeDesiredMove`,
 5. `ApplyCrowdSteer`,
 6. `ApplySeparation`,
-7. `AttackTargets`,
-8. `ResolveDamage`,
-9. `RemoveDead`,
-10. `IntegrateVelocity`,
-11. `IntegratePosition`.
+7. `MeleeBroadphase`,
+8. `AttackTargets`,
+9. `ResolveDamage`,
+10. `RemoveDead`,
+11. `IntegrateVelocity`,
+12. `IntegratePosition`.
 
 Boucle cible a moyen terme:
 
@@ -204,6 +205,7 @@ Choix cible:
 ### Combat
 
 - selection de cible spatiale aujourd'hui,
+- broadphase melee spatial dedie aujourd'hui,
 - aggregation d'evenements de degats aujourd'hui,
 - morts differees aujourd'hui,
 - capsules et volumes simples ensuite,

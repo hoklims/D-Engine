@@ -228,3 +228,32 @@ Pourquoi:
 - une bataille translatee dans l'espace ne doit pas changer de tiers LOD,
 - l'origine monde n'est pas une notion gameplay defendable,
 - cela prepare une future gestion explicite du centre d'interet de bataille.
+
+## DL-019 - Broadphase melee dedie avant la resolution des degats
+
+Decision:
+
+- le melee ne repose plus seulement sur la cible courante et un test de
+  distance implicite,
+- un broadphase melee dedie prefiltre les paires attaquant/defenseur avant
+  `AttackTargets`.
+
+Pourquoi:
+
+- il fallait borner explicitement le cout du combat crowd,
+- separer targeting et melee rend le contrat plus lisible,
+- cela fournit une telemetry melee propre avant les optimisations suivantes.
+
+## DL-020 - Contrat melee: cible coherente et un seul hit par agent
+
+Decision:
+
+- `AttackTargets` frappe toujours `Target.entity` si cette cible est validee
+  par le broadphase,
+- un agent n'emet au plus qu'un seul hit par tick, meme avec `interval <= 0`.
+
+Pourquoi:
+
+- le broadphase ne devait pas remplacer la semantique de ciblage,
+- un multi-hit implicite par voisin aurait cree une derive gameplay non voulue,
+- ce contrat garde le melee simple, deterministe et defendable.

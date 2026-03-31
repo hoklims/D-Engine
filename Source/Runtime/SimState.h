@@ -23,6 +23,37 @@ struct SystemStats {
     uint32_t     entities_processed      = 0;
 };
 
+// Budget thresholds for per-tick cost evaluation.
+// Purely evaluative -- no auto-throttle, no enforcement.
+struct SimBudgetConfig {
+    double   max_tick_s            = 0.004;   // total tick CPU (4ms @ 60Hz ~ 24% frame)
+    double   max_system_s          = 0.002;   // single system ceiling
+    uint32_t max_targeting_scanned = 5000;    // spatial scan work
+    uint32_t max_melee_checks      = 2000;    // broadphase pair checks
+    uint32_t max_lod_t0_count      = 200;     // full-fidelity agent cap
+};
+
+// Result of per-tick budget evaluation.  Read-only diagnostic.
+struct SimBudgetStatus {
+    bool     within_budget         = true;
+    uint32_t violation_count       = 0;
+
+    // Per-contract flags.
+    bool     tick_over             = false;
+    bool     system_over           = false;
+    bool     targeting_over        = false;
+    bool     melee_over            = false;
+    bool     lod_t0_over           = false;
+
+    // Diagnostics.
+    double   tick_elapsed_s        = 0.0;
+    char     hottest_system[k_system_name_max] = {};
+    double   hottest_system_s      = 0.0;
+    uint32_t targeting_scanned     = 0;
+    uint32_t melee_checks          = 0;
+    uint32_t lod_t0_count          = 0;
+};
+
 // Debug snapshot of the simulation pipeline.
 struct SimSnapshot {
     uint32_t    entity_count  = 0;
@@ -67,6 +98,9 @@ struct SimSnapshot {
     uint32_t    melee_broadphase_checks = 0;
     uint32_t    melee_pairs_this_tick   = 0;
     uint32_t    melee_attacks_this_tick = 0;
+
+    // Budget evaluation (this tick).
+    SimBudgetStatus budget;
 };
 
 // Signature for a fixed-step simulation system.
@@ -146,6 +180,9 @@ struct SimState {
 
     void set_lod_center(float cx, float cy);
 
+    void set_budget_config(const SimBudgetConfig& cfg);
+    const SimBudgetStatus& budget_status() const;
+
     SimSnapshot snapshot() const;
     uint32_t    system_count() const;
 
@@ -184,12 +221,15 @@ private:
     uint32_t      melee_attacks_this_tick_   = 0;
     BehaviorLodConfig lod_config_;
     SimHashHistory    hash_history_;
+    SimBudgetConfig   budget_config_;
+    SimBudgetStatus   budget_status_;
 
     void register_systems();
     void register_crowd_systems();
     void update_crowd_stats();
     void cull_pre_dead();
     void build_nav_fields();
+    void evaluate_budget();
 };
 
 // Run a bootstrapped SimState for N ticks, collecting the hash after each.

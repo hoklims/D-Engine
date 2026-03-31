@@ -78,3 +78,12 @@ add_executable(SimHashTest
 target_link_libraries(SimHashTest PRIVATE DEcs)
 target_include_directories(SimHashTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
 add_test(NAME SimHashTest COMMAND SimHashTest)
+
+add_executable(BudgetTest
+    BudgetTest.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/SimState.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/CrowdSystems.cpp
+)
+target_link_libraries(BudgetTest PRIVATE DEcs)
+target_include_directories(BudgetTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
+add_test(NAME BudgetTest COMMAND BudgetTest)

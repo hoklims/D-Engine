@@ -359,8 +359,9 @@ En clair:
   obstacles statiques,
 - le runtime crowd sait aussi degrader son cout via un premier LOD
   comportemental a 4 tiers, pilote par un centre de bataille explicite,
-- le rendu crowd-first, le replay complet, les jobs et le broadphase melee
-  dedie restent devant nous.
+- le combat crowd dispose aussi d'un premier broadphase melee dedie et
+  telemetre,
+- le rendu crowd-first, le replay complet et les jobs restent devant nous.
 
 -------------------------------------------------------------------------------
 

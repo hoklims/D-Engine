@@ -30,14 +30,14 @@ Ce qui existe deja dans la branche `de-engine-2.0`:
 - navigation battlefield via grille statique + BFS integration field,
 - LOD comportemental a 4 tiers avec telemetry dediee,
 - centre LOD explicite, independant de l'origine monde,
-- couverture de tests dediee (`CrowdTest`, `NavTest`, `LodTest`).
+- broadphase melee dedie avec telemetry de combat,
+- couverture de tests dediee (`CrowdTest`, `NavTest`, `LodTest`, `MeleeTest`).
 
 Ce qui manque encore avant de sortir du bloc runtime/crowd:
 
 - job system,
 - allocateurs temps reel,
 - replay/hash de simulation,
-- broadphase melee dediee,
 - extraction de frame,
 - debut du rendu DX12.
 
@@ -106,13 +106,14 @@ Livrables atteints:
 - separation locale soft,
 - LOD comportemental a 4 tiers, avec gating des systemes strategiques,
 - telemetry crowd et LOD coherent post-tick,
+- broadphase melee dedie et telemetre,
 - combat simple avec resolution simultanee,
 - scenes de test crowd et battlefield.
 
 Livrables encore ouverts:
 
 - avoidance locale plus intelligente,
-- broadphase melee dediee,
+- replay/hash de simulation,
 - extraction crowd vers le rendu.
 
 ## Phase 3 - Pipeline visuel crowd-first
@@ -171,18 +172,18 @@ aucun pari avance n'entre dans le coeur du moteur sans gain mesure.
 
 ## Prochain verrou recommande
 
-Le prochain lot utile n'est plus la navigation strategique simple ni le premier
-LOD comportemental. Ils existent deja. Le verrou suivant est l'un des deux
-suivants:
+Le prochain lot utile n'est plus la navigation strategique simple, le premier
+LOD comportemental ni le broadphase melee dedie. Ils existent deja. Le verrou
+suivant est l'un des deux suivants:
 
-1. borner plus finement le cout du combat crowd:
-   broadphase melee dediee, budgets explicites, telemetry plus proche du
-   gameplay;
-2. verrouiller la preuve du runtime:
+1. verrouiller la preuve du runtime:
    replay/hash de simulation, puis seulement rendu crowd-first.
+2. enrichir la simulation crowd:
+   avoidance plus credible, budgets explicites, telemetry plus proche du
+   gameplay.
 
 Le chemin recommande a court terme est:
 
-- broadphase melee dediee,
 - replay/hash de simulation,
+- puis budgets crowd plus explicites,
 - puis seulement ouverture du pipeline de rendu crowd-first.
