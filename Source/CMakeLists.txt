@@ -11,6 +11,7 @@ add_executable(DEngine WIN32
     Runtime/FrameTelemetry.h
     Runtime/ScopeTimer.h
     Runtime/ScopeTimer.cpp
+    Runtime/CommandBuffer.h
     Runtime/Components.h
     Runtime/SimState.h
     Runtime/SimState.cpp

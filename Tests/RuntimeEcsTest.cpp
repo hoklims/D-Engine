@@ -60,9 +60,7 @@ static void test_single_tick() {
         });
 
     check(count == 4, "single_tick: 4 entities iterated");
-    // sum_x = (0+1) + (10+1) + (20+1) + (30+1) = 64
     check(approx(sum_x, 64.0f), "single_tick: sum_x == 64");
-    // sum_y = 4 * 0.5 = 2
     check(approx(sum_y, 2.0f), "single_tick: sum_y == 2");
 }
 
@@ -254,7 +252,6 @@ static void test_system_order_matters() {
     de::SimState sim;
     sim.bootstrap();
 
-    // Entity with non-zero acceleration to prove order.
     de::EntityId e = sim.world.create();
     sim.world.set(e, de::Position{0.0f, 0.0f});
     sim.world.set(e, de::Velocity{0.0f, 0.0f});
@@ -262,11 +259,6 @@ static void test_system_order_matters() {
 
     sim.tick(1.0);
 
-    // Correct order (vel first, then pos):
-    //   v.dx = 0 + 2*1 = 2
-    //   p.x  = 0 + 2*1 = 2
-    //
-    // Wrong order (pos first, then vel) would give p.x = 0.
     check(approx(sim.world.get<de::Velocity>(e)->dx, 2.0f),
           "order: velocity == 2.0");
     check(approx(sim.world.get<de::Position>(e)->x, 2.0f),
@@ -286,9 +278,6 @@ static void test_acceleration_multi_tick() {
     sim.world.set(e, de::Velocity{0.0f, 0.0f});
     sim.world.set(e, de::Acceleration{1.0f, 0.0f});
 
-    // Tick 1: v=1, p=0+1=1
-    // Tick 2: v=2, p=1+2=3
-    // Tick 3: v=3, p=3+3=6
     sim.tick(1.0);
     sim.tick(1.0);
     sim.tick(1.0);
@@ -334,7 +323,6 @@ static void test_telemetry_entity_count_varies() {
     de::SimState sim;
     sim.bootstrap();
 
-    // Entity with Position+Velocity but NO Acceleration.
     de::EntityId e = sim.world.create();
     sim.world.set(e, de::Position{0.0f, 0.0f});
     sim.world.set(e, de::Velocity{1.0f, 0.0f});
@@ -342,12 +330,169 @@ static void test_telemetry_entity_count_varies() {
     sim.tick(1.0);
 
     de::SimSnapshot snap = sim.snapshot();
-    // IntegrateVelocity needs Velocity+Acceleration: 4 bootstrap entities only.
     check(snap.systems[0].entities_processed == 4,
           "vary_count: IntegrateVelocity processes 4 (not 5)");
-    // IntegratePosition needs Position+Velocity: all 5.
     check(snap.systems[1].entities_processed == 5,
           "vary_count: IntegratePosition processes 5");
+}
+
+// =================================================================
+//  Test systems for deferred command testing
+// =================================================================
+
+// Queues destroy for every entity with Position.x > 25.
+static uint32_t destroy_high_x(de::World& world, float, de::CommandBuffer& cmds) {
+    uint32_t count = 0;
+    world.each<de::Position>([&](de::EntityId id, de::Position& p) {
+        ++count;
+        if (p.x > 25.0f) {
+            cmds.destroy(id);
+        }
+    });
+    return count;
+}
+
+// Spawns one entity at Position(100, 0).
+static uint32_t spawn_one(de::World& world, float, de::CommandBuffer& cmds) {
+    uint32_t count = 0;
+    world.each<de::Position>([&](de::EntityId, de::Position&) { ++count; });
+    cmds.spawn([](de::World& w, de::EntityId e) {
+        w.set(e, de::Position{100.0f, 0.0f});
+        w.set(e, de::Velocity{0.0f, 0.0f});
+        w.set(e, de::Acceleration{0.0f, 0.0f});
+    });
+    return count;
+}
+
+// Counts entities and stores in a global for external verification.
+static uint32_t g_count_seen = 0;
+
+static uint32_t count_only(de::World& world, float, de::CommandBuffer&) {
+    uint32_t count = 0;
+    world.each<de::Position>([&](de::EntityId, de::Position&) { ++count; });
+    g_count_seen = count;
+    return count;
+}
+
+// =================================================================
+//  Deferred destroy: entity survives iteration, dies after tick
+// =================================================================
+
+static void test_deferred_destroy() {
+    de::SimState sim;
+    sim.bootstrap();  // pos.x = 0, 10, 20, 30
+    sim.add_system("DestroyHighX", destroy_high_x);
+
+    sim.tick(1.0);
+    // After integration: pos.x = 1, 11, 21, 31
+    // DestroyHighX queues destroy for x=31.  Apply removes it.
+
+    check(sim.world.entity_count() == 3,
+          "deferred_destroy: 3 entities remain");
+
+    bool found_31 = false;
+    sim.world.each<de::Position>([&](de::EntityId, de::Position& p) {
+        if (approx(p.x, 31.0f)) found_31 = true;
+    });
+    check(!found_31, "deferred_destroy: entity at x~31 is gone");
+}
+
+// =================================================================
+//  Deferred spawn: entity appears after tick
+// =================================================================
+
+static void test_deferred_spawn() {
+    de::SimState sim;
+    sim.bootstrap();
+    sim.add_system("SpawnOne", spawn_one);
+
+    sim.tick(1.0);
+
+    check(sim.world.entity_count() == 5,
+          "deferred_spawn: 5 entities after spawn");
+
+    bool found_100 = false;
+    sim.world.each<de::Position>([&](de::EntityId, de::Position& p) {
+        if (approx(p.x, 100.0f)) found_100 = true;
+    });
+    check(found_100, "deferred_spawn: spawned entity at x=100 exists");
+}
+
+// =================================================================
+//  No invalidation: entities queued for destroy still visible in later systems
+// =================================================================
+
+static void test_no_invalidation_during_iteration() {
+    de::SimState sim;
+    sim.bootstrap();
+    sim.add_system("DestroyHighX", destroy_high_x);
+    sim.add_system("CountAfter", count_only);
+
+    g_count_seen = 0;
+    sim.tick(1.0);
+
+    // CountAfter runs AFTER DestroyHighX.
+    // Destroy is deferred, so CountAfter still sees all 4 entities.
+    check(g_count_seen == 4,
+          "no_invalidation: later system still sees 4 (destroy not applied yet)");
+    check(sim.world.entity_count() == 3,
+          "no_invalidation: 3 entities after apply");
+}
+
+// =================================================================
+//  Deterministic apply at end of tick
+// =================================================================
+
+static void test_deterministic_apply() {
+    de::SimState sim;
+    sim.bootstrap();
+    sim.add_system("SpawnOne", spawn_one);
+    sim.add_system("CountAfter", count_only);
+
+    g_count_seen = 0;
+    sim.tick(1.0);
+
+    // SpawnOne queues a spawn.  CountAfter runs after, should see
+    // the original 4 (spawn not applied until end of tick).
+    check(g_count_seen == 4,
+          "deterministic: CountAfter sees 4 (spawn not applied yet)");
+    check(sim.world.entity_count() == 5,
+          "deterministic: 5 entities after apply");
+}
+
+// =================================================================
+//  Snapshot reports command counts
+// =================================================================
+
+static void test_snapshot_cmd_stats() {
+    de::SimState sim;
+    sim.bootstrap();
+    sim.add_system("DestroyHighX", destroy_high_x);
+    sim.add_system("SpawnOne", spawn_one);
+
+    sim.tick(1.0);
+
+    de::SimSnapshot snap = sim.snapshot();
+    // DestroyHighX queues 1 destroy, SpawnOne queues 1 spawn = 2 total
+    check(snap.cmds_queued == 2, "cmd_stats: 2 commands queued");
+    check(snap.cmds_applied == 2, "cmd_stats: 2 commands applied");
+    // 4 - 1 + 1 = 4
+    check(snap.entity_count == 4, "cmd_stats: entity_count == 4");
+}
+
+// =================================================================
+//  No commands when systems don't use CommandBuffer
+// =================================================================
+
+static void test_no_commands_baseline() {
+    de::SimState sim;
+    sim.bootstrap();
+
+    sim.tick(1.0);
+
+    de::SimSnapshot snap = sim.snapshot();
+    check(snap.cmds_queued == 0, "baseline: 0 commands queued");
+    check(snap.cmds_applied == 0, "baseline: 0 commands applied");
 }
 
 // =================================================================
@@ -375,6 +520,14 @@ int main() {
     // Telemetry
     test_pipeline_telemetry();
     test_telemetry_entity_count_varies();
+
+    // Deferred commands
+    test_deferred_destroy();
+    test_deferred_spawn();
+    test_no_invalidation_during_iteration();
+    test_deterministic_apply();
+    test_snapshot_cmd_stats();
+    test_no_commands_baseline();
 
     std::printf("\nRuntimeEcsTest results: %d passed, %d failed\n",
                 g_pass, g_fail);

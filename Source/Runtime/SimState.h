@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ECS/World.h"
+#include "Runtime/CommandBuffer.h"
 #include "Runtime/Components.h"
 
 #include <cstdint>
@@ -18,15 +19,22 @@ struct SystemStats {
 
 // Debug snapshot of the simulation pipeline.
 struct SimSnapshot {
-    uint32_t    entity_count = 0;
-    uint64_t    tick_count   = 0;
-    uint32_t    system_count = 0;
+    uint32_t    entity_count  = 0;
+    uint64_t    tick_count    = 0;
+    uint32_t    system_count  = 0;
+    uint32_t    cmds_queued   = 0;
+    uint32_t    cmds_applied  = 0;
     SystemStats systems[k_max_sim_systems] = {};
 };
 
 // Signature for a fixed-step simulation system.
+// Systems receive a read/write World reference for component data,
+// the timestep, and a CommandBuffer for deferred structural mutations.
 // Returns the number of entities processed.
-using FixedSystemFn = uint32_t(*)(World& world, float dt);
+//
+// Contract: systems MUST NOT call create/destroy/set(new type)/remove
+// on the World directly.  Structural changes go through CommandBuffer.
+using FixedSystemFn = uint32_t(*)(World& world, float dt, CommandBuffer& cmds);
 
 // A named system in the fixed-step pipeline.
 struct FixedSystem {
@@ -40,6 +48,12 @@ struct FixedSystem {
 //   bootstrap() is idempotent -- always resets to virgin state first
 //   (world cleared, tick_count zeroed, pipeline re-registered).
 //   Safe to call multiple times or after tick()/shutdown().
+//
+// Tick flow:
+//   1. Clear command buffer
+//   2. Run all systems in order (they queue deferred commands)
+//   3. Apply all deferred commands at once (spawns first, then destroys)
+//   4. Increment tick_count
 struct SimState {
     World world;
 
@@ -47,17 +61,21 @@ struct SimState {
     void tick(double step_dt);
     void shutdown();
 
+    void add_system(const char* name, FixedSystemFn fn);
+
     SimSnapshot snapshot() const;
     uint32_t    system_count() const;
 
 private:
-    uint64_t    tick_count_   = 0;
-    uint32_t    system_count_ = 0;
-    FixedSystem pipeline_[k_max_sim_systems]  = {};
-    SystemStats last_stats_[k_max_sim_systems] = {};
+    uint64_t      tick_count_            = 0;
+    uint32_t      system_count_          = 0;
+    uint32_t      cmds_queued_last_      = 0;
+    uint32_t      cmds_applied_last_     = 0;
+    FixedSystem   pipeline_[k_max_sim_systems]  = {};
+    SystemStats   last_stats_[k_max_sim_systems] = {};
+    CommandBuffer cmds_;
 
     void register_systems();
-    void add_system(const char* name, FixedSystemFn fn);
 };
 
 }  // namespace de
