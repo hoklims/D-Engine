@@ -55,4 +55,35 @@ struct Separation {
     float strength = 5.0f;   // push magnitude at full overlap (units/s)
 };
 
+// Behavior LOD tier assigned each tick by the classification system.
+// Determines simulation frequency for non-critical systems.
+//
+// Contract:
+//   T0 = full fidelity, every tick
+//   T1 = every 2 ticks
+//   T2 = every 4 ticks
+//   T3 = every 8 ticks (quasi-dormant)
+//
+// Classification criteria (simple, deterministic):
+//   - engaged agents (enemy within EngageRadius) are always T0
+//   - other agents: tier based on distance to battle center (0,0)
+//
+// Invariant: combat systems (AttackTargets, ResolveDamage, RemoveDead)
+// and physics integration always run for ALL agents regardless of tier.
+// Only strategic/navigation/separation systems are gated.
+struct BehaviorLod {
+    uint8_t  tier   = 0;   // 0-3
+    uint8_t  stride = 1;   // update every N ticks (1, 2, 4, 8)
+};
+
+static constexpr uint8_t k_lod_tier_count = 4;
+static constexpr uint8_t k_lod_strides[k_lod_tier_count] = {1, 2, 4, 8};
+
+// Configurable distance thresholds for LOD classification.
+struct BehaviorLodConfig {
+    float t1_distance = 30.0f;   // beyond this -> T1
+    float t2_distance = 60.0f;   // beyond this -> T2
+    float t3_distance = 100.0f;  // beyond this -> T3
+};
+
 }  // namespace de

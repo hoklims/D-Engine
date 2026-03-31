@@ -43,6 +43,15 @@ target_link_libraries(CrowdTest PRIVATE DEcs)
 target_include_directories(CrowdTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
 add_test(NAME CrowdTest COMMAND CrowdTest)
 
+add_executable(LodTest
+    LodTest.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/SimState.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/CrowdSystems.cpp
+)
+target_link_libraries(LodTest PRIVATE DEcs)
+target_include_directories(LodTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
+add_test(NAME LodTest COMMAND LodTest)
+
 add_executable(NavTest
     NavTest.cpp
     ${CMAKE_SOURCE_DIR}/Source/Runtime/SimState.cpp

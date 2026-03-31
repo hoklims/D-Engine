@@ -52,6 +52,9 @@ void SimState::bootstrap() {
     nav_blocked_cells_           = 0;
     nav_grid_active_             = false;
     set_battlefield_grids(nullptr, 0);
+    for (auto& c : lod_tier_counts_) c = 0;
+    lod_skipped_this_tick_       = 0;
+    lod_config_                  = BehaviorLodConfig{};
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -89,6 +92,9 @@ void SimState::bootstrap_crowd(const CrowdConfig& cfg) {
     nav_blocked_cells_           = 0;
     nav_grid_active_             = false;
     set_battlefield_grids(nullptr, 0);
+    for (auto& c : lod_tier_counts_) c = 0;
+    lod_skipped_this_tick_       = 0;
+    lod_config_                  = BehaviorLodConfig{};
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -115,6 +121,7 @@ void SimState::bootstrap_crowd(const CrowdConfig& cfg) {
             float goal_x = (team == 0) ? cfg.team_spacing : -cfg.team_spacing;
             world.set(e, BattleGoal{goal_x, 0.0f});
             world.set(e, EngageRadius{cfg.engage_radius});
+            world.set(e, BehaviorLod{});
         }
     }
 
@@ -178,6 +185,8 @@ void SimState::tick(double step_dt) {
     float dt = static_cast<float>(step_dt);
     cmds_.clear();
     reset_crowd_tick_counters();
+    set_crowd_tick_count(tick_count_);
+    set_behavior_lod_config(&lod_config_);
 
     WorldView view(world);
 
@@ -199,6 +208,9 @@ void SimState::tick(double step_dt) {
     agents_engaged_                 = crowd_agents_engaged_this_tick();
     nav_queries_this_tick_          = crowd_nav_queries_this_tick();
     nav_failures_this_tick_         = crowd_nav_failures_this_tick();
+    for (uint8_t t = 0; t < k_lod_tier_count; ++t)
+        lod_tier_counts_[t] = crowd_lod_tier_count(t);
+    lod_skipped_this_tick_          = crowd_lod_skipped_this_tick();
 
     cmds_queued_last_ = cmds_.pending();
     cmds_.apply(world);
@@ -227,6 +239,9 @@ void SimState::shutdown() {
     nav_blocked_cells_           = 0;
     nav_grid_active_             = false;
     set_battlefield_grids(nullptr, 0);
+    for (auto& c : lod_tier_counts_) c = 0;
+    lod_skipped_this_tick_       = 0;
+    lod_config_                  = BehaviorLodConfig{};
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -255,6 +270,8 @@ SimSnapshot SimState::snapshot() const {
     snap.nav_queries_this_tick          = nav_queries_this_tick_;
     snap.nav_failures_this_tick         = nav_failures_this_tick_;
     snap.nav_blocked_cells              = nav_blocked_cells_;
+    for (int t = 0; t < 4; ++t) snap.lod_tier_counts[t] = lod_tier_counts_[t];
+    snap.lod_skipped_this_tick          = lod_skipped_this_tick_;
     return snap;
 }
 
@@ -269,6 +286,7 @@ void SimState::register_systems() {
 
 void SimState::register_crowd_systems() {
     add_system("SelectTargets",      select_targets);
+    add_system("ClassifyLod",        classify_behavior_lod);
     add_system("ComputeBattleGoal", compute_battle_goal);
     add_system("ComputeDesiredMove", compute_desired_movement);
     add_system("ApplyCrowdSteer",    apply_crowd_steering);

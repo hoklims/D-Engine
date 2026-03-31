@@ -198,28 +198,30 @@ static void test_crowd_system_order() {
     sim.tick(1.0);
 
     de::SimSnapshot snap = sim.snapshot();
-    check(snap.system_count == 10, "system_order: 10 systems registered");
+    check(snap.system_count == 11, "system_order: 11 systems registered");
 
     check(std::strcmp(snap.systems[0].name, "SelectTargets") == 0,
           "system_order: [0] SelectTargets");
-    check(std::strcmp(snap.systems[1].name, "ComputeBattleGoal") == 0,
-          "system_order: [1] ComputeBattleGoal");
-    check(std::strcmp(snap.systems[2].name, "ComputeDesiredMove") == 0,
-          "system_order: [2] ComputeDesiredMove");
-    check(std::strcmp(snap.systems[3].name, "ApplyCrowdSteer") == 0,
-          "system_order: [3] ApplyCrowdSteer");
-    check(std::strcmp(snap.systems[4].name, "ApplySeparation") == 0,
-          "system_order: [4] ApplySeparation");
-    check(std::strcmp(snap.systems[5].name, "AttackTargets") == 0,
-          "system_order: [5] AttackTargets");
-    check(std::strcmp(snap.systems[6].name, "ResolveDamage") == 0,
-          "system_order: [6] ResolveDamage");
-    check(std::strcmp(snap.systems[7].name, "RemoveDead") == 0,
-          "system_order: [7] RemoveDead");
-    check(std::strcmp(snap.systems[8].name, "IntegrateVelocity") == 0,
-          "system_order: [8] IntegrateVelocity");
-    check(std::strcmp(snap.systems[9].name, "IntegratePosition") == 0,
-          "system_order: [9] IntegratePosition");
+    check(std::strcmp(snap.systems[1].name, "ClassifyLod") == 0,
+          "system_order: [1] ClassifyLod");
+    check(std::strcmp(snap.systems[2].name, "ComputeBattleGoal") == 0,
+          "system_order: [2] ComputeBattleGoal");
+    check(std::strcmp(snap.systems[3].name, "ComputeDesiredMove") == 0,
+          "system_order: [3] ComputeDesiredMove");
+    check(std::strcmp(snap.systems[4].name, "ApplyCrowdSteer") == 0,
+          "system_order: [4] ApplyCrowdSteer");
+    check(std::strcmp(snap.systems[5].name, "ApplySeparation") == 0,
+          "system_order: [5] ApplySeparation");
+    check(std::strcmp(snap.systems[6].name, "AttackTargets") == 0,
+          "system_order: [6] AttackTargets");
+    check(std::strcmp(snap.systems[7].name, "ResolveDamage") == 0,
+          "system_order: [7] ResolveDamage");
+    check(std::strcmp(snap.systems[8].name, "RemoveDead") == 0,
+          "system_order: [8] RemoveDead");
+    check(std::strcmp(snap.systems[9].name, "IntegrateVelocity") == 0,
+          "system_order: [9] IntegrateVelocity");
+    check(std::strcmp(snap.systems[10].name, "IntegratePosition") == 0,
+          "system_order: [10] IntegratePosition");
 }
 
 // =================================================================
@@ -290,8 +292,8 @@ static void test_crowd_bootstrap_idempotent() {
     de::SimSnapshot snap = sim.snapshot();
     check(snap.tick_count == 0,
           "crowd_idempotent: tick_count reset");
-    check(snap.system_count == 10,
-          "crowd_idempotent: 10 systems, not 20");
+    check(snap.system_count == 11,
+          "crowd_idempotent: 11 systems, not 22");
     check(snap.crowd_agent_count == 20,
           "crowd_idempotent: crowd metrics correct after re-bootstrap");
 }

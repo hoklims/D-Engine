@@ -27,6 +27,11 @@ static uint32_t s_separation_pairs       = 0;
 static uint32_t s_agents_engaged         = 0;
 static uint32_t s_nav_queries            = 0;
 static uint32_t s_nav_failures           = 0;
+static uint32_t s_lod_counts[k_lod_tier_count] = {};
+static uint32_t s_lod_skipped            = 0;
+static const BehaviorLodConfig* s_lod_cfg = nullptr;
+static BehaviorLodConfig s_lod_default;
+static uint64_t s_crowd_tick             = 0;
 
 uint32_t crowd_attacks_this_tick()            { return s_attacks_this_tick; }
 uint32_t crowd_deaths_queued_this_tick()      { return s_deaths_this_tick; }
@@ -35,6 +40,11 @@ uint32_t crowd_separation_pairs_this_tick()   { return s_separation_pairs; }
 uint32_t crowd_agents_engaged_this_tick()     { return s_agents_engaged; }
 uint32_t crowd_nav_queries_this_tick()        { return s_nav_queries; }
 uint32_t crowd_nav_failures_this_tick()       { return s_nav_failures; }
+uint32_t crowd_lod_tier_count(uint8_t tier)   { return (tier < k_lod_tier_count) ? s_lod_counts[tier] : 0; }
+uint32_t crowd_lod_skipped_this_tick()        { return s_lod_skipped; }
+
+void set_behavior_lod_config(const BehaviorLodConfig* cfg) { s_lod_cfg = cfg; }
+void set_crowd_tick_count(uint64_t tick) { s_crowd_tick = tick; }
 
 void set_battlefield_grids(const BattlefieldGrid* const* grids, uint32_t count) {
     s_nav_grids      = grids;
@@ -50,7 +60,77 @@ void     reset_crowd_tick_counters() {
     s_agents_engaged     = 0;
     s_nav_queries        = 0;
     s_nav_failures       = 0;
+    for (auto& c : s_lod_counts) c = 0;
+    s_lod_skipped        = 0;
     s_hit_buffer.clear();
+}
+
+// -----------------------------------------------------------------------
+//  LOD helpers
+// -----------------------------------------------------------------------
+
+// Returns true if this agent should be SKIPPED by a gated system
+// on the current tick.
+static bool lod_should_skip(const BehaviorLod& lod) {
+    if (lod.stride <= 1) return false;
+    return (s_crowd_tick % lod.stride) != 0;
+}
+
+// -----------------------------------------------------------------------
+//  classify_behavior_lod
+// -----------------------------------------------------------------------
+// Assign a LOD tier to each crowd agent based on engagement state and
+// distance to battle center (0,0).  Engaged agents are always T0.
+// Must run BEFORE any gated system.
+
+uint32_t classify_behavior_lod(WorldView& view, float /*dt*/,
+                               CommandBuffer& /*cmds*/) {
+    const BehaviorLodConfig& cfg = s_lod_cfg ? *s_lod_cfg : s_lod_default;
+    for (auto& c : s_lod_counts) c = 0;
+
+    uint32_t count = 0;
+    view.each<CrowdAgent, Position, Target, EngageRadius, BehaviorLod>(
+        [&](EntityId, CrowdAgent&, Position& pos,
+            Target& tgt, EngageRadius& engage, BehaviorLod& lod) {
+            ++count;
+
+            // Engaged agents are always T0 (full fidelity).
+            bool is_engaged = false;
+            if (tgt.has_target && view.alive(tgt.entity)) {
+                const auto* tp = view.get<Position>(tgt.entity);
+                if (tp) {
+                    float dx = tp->x - pos.x;
+                    float dy = tp->y - pos.y;
+                    float d2 = dx * dx + dy * dy;
+                    if (d2 <= engage.radius * engage.radius) {
+                        is_engaged = true;
+                    }
+                }
+            }
+
+            if (is_engaged) {
+                lod.tier   = 0;
+                lod.stride = k_lod_strides[0];
+            } else {
+                // Distance to battle center (0, 0).
+                float dist = std::sqrt(pos.x * pos.x + pos.y * pos.y);
+                if (dist < cfg.t1_distance) {
+                    lod.tier   = 0;
+                    lod.stride = k_lod_strides[0];
+                } else if (dist < cfg.t2_distance) {
+                    lod.tier   = 1;
+                    lod.stride = k_lod_strides[1];
+                } else if (dist < cfg.t3_distance) {
+                    lod.tier   = 2;
+                    lod.stride = k_lod_strides[2];
+                } else {
+                    lod.tier   = 3;
+                    lod.stride = k_lod_strides[3];
+                }
+            }
+            ++s_lod_counts[lod.tier];
+        });
+    return count;
 }
 
 // -----------------------------------------------------------------------
@@ -100,9 +180,12 @@ uint32_t select_targets(WorldView& view, float /*dt*/, CommandBuffer& /*cmds*/) 
 uint32_t compute_battle_goal(WorldView& view, float /*dt*/,
                              CommandBuffer& /*cmds*/) {
     uint32_t count = 0;
-    view.each<CrowdAgent, Team, Position, BattleGoal, DesiredDirection>(
+    view.each<CrowdAgent, Team, Position, BattleGoal, DesiredDirection, BehaviorLod>(
         [&](EntityId, CrowdAgent&, Team& team, Position& pos,
-            BattleGoal& goal, DesiredDirection& dir) {
+            BattleGoal& goal, DesiredDirection& dir, BehaviorLod& lod) {
+            // LOD gating: skip non-T0 agents on off-ticks.
+            // Their DesiredDirection from the last update is preserved.
+            if (lod_should_skip(lod)) { ++s_lod_skipped; return; }
             ++count;
 
             // When navigation grids are installed, the flow field is
@@ -299,9 +382,11 @@ uint32_t apply_separation(WorldView& view, float /*dt*/,
                           CommandBuffer& /*cmds*/) {
     s_separation_pairs = 0;
     uint32_t count = 0;
-    view.each<CrowdAgent, Position, Velocity, Separation, MoveSpeed>(
+    view.each<CrowdAgent, Position, Velocity, Separation, MoveSpeed, BehaviorLod>(
         [&](EntityId self, CrowdAgent&, Position& pos,
-            Velocity& vel, Separation& sep, MoveSpeed& spd) {
+            Velocity& vel, Separation& sep, MoveSpeed& spd, BehaviorLod& lod) {
+            // LOD gating: skip separation for non-T0 agents on off-ticks.
+            if (lod_should_skip(lod)) { ++s_lod_skipped; return; }
             ++count;
             float push_x = 0.0f;
             float push_y = 0.0f;

@@ -3,6 +3,7 @@
 #include "ECS/WorldView.h"
 #include "Runtime/CommandBuffer.h"
 #include "Runtime/BattlefieldGrid.h"
+#include "Runtime/CrowdComponents.h"
 
 #include <cstdint>
 
@@ -33,6 +34,11 @@ namespace de {
 //
 // Deaths caused during the tick (ResolveDamage -> RemoveDead) are
 // deferred via CommandBuffer and applied after all systems finish.
+
+// Classify each agent into a behavior LOD tier based on engagement
+// state and distance to battle center.  Must run before any gated
+// system so that tier/stride are fresh for the current tick.
+uint32_t classify_behavior_lod(WorldView& view, float dt, CommandBuffer& cmds);
 
 // Pick the nearest enemy as pursuit target.
 uint32_t select_targets(WorldView& view, float dt, CommandBuffer& cmds);
@@ -85,6 +91,12 @@ uint32_t crowd_separation_pairs_this_tick();
 uint32_t crowd_agents_engaged_this_tick();
 uint32_t crowd_nav_queries_this_tick();
 uint32_t crowd_nav_failures_this_tick();
+uint32_t crowd_lod_tier_count(uint8_t tier);
+uint32_t crowd_lod_skipped_this_tick();
+
+// Install LOD config and current tick count for gating decisions.
+void     set_behavior_lod_config(const BehaviorLodConfig* cfg);
+void     set_crowd_tick_count(uint64_t tick);
 void     reset_crowd_tick_counters();
 
 }  // namespace de

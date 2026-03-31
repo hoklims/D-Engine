@@ -5,6 +5,7 @@
 #include "Runtime/CommandBuffer.h"
 #include "Runtime/Components.h"
 #include "Runtime/BattlefieldGrid.h"
+#include "Runtime/CrowdComponents.h"
 
 #include <cstdint>
 
@@ -52,6 +53,10 @@ struct SimSnapshot {
     uint32_t    nav_queries_this_tick  = 0;
     uint32_t    nav_failures_this_tick = 0;
     uint32_t    nav_blocked_cells      = 0;
+
+    // Behavior LOD telemetry (this tick).
+    uint32_t    lod_tier_counts[4]     = {};
+    uint32_t    lod_skipped_this_tick  = 0;
 };
 
 // Signature for a fixed-step simulation system.
@@ -157,6 +162,9 @@ private:
     float         nav_goals_x_[k_max_teams]   = {};
     float         nav_goals_y_[k_max_teams]   = {};
     bool          nav_grid_active_            = false;
+    uint32_t      lod_tier_counts_[4]         = {};
+    uint32_t      lod_skipped_this_tick_      = 0;
+    BehaviorLodConfig lod_config_;
 
     void register_systems();
     void register_crowd_systems();
