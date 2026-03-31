@@ -32,7 +32,8 @@ struct SimSnapshot {
     uint32_t    cmds_applied  = 0;
     SystemStats systems[k_max_sim_systems] = {};
 
-    // Simulation hash (computed at end of tick, before tick_count increment).
+    // Simulation hash (computed at end of tick, with tick_count post-increment).
+    // sim_hash and tick_count always refer to the same completed tick.
     uint64_t    sim_hash           = 0;
 
     // Crowd metrics.

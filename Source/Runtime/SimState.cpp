@@ -238,11 +238,13 @@ void SimState::tick(double step_dt) {
 
     update_crowd_stats();
 
+    ++tick_count_;
+
     // Compute deterministic simulation hash on post-apply world state.
+    // Uses tick_count_ (post-increment) so that snapshot().tick_count and
+    // snapshot().sim_hash always refer to the same completed tick.
     uint64_t hash = compute_sim_hash(world, tick_count_);
     hash_history_.push(hash);
-
-    ++tick_count_;
 }
 
 void SimState::shutdown() {

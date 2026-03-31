@@ -250,6 +250,71 @@ static void test_bootstrap_clears_history() {
 }
 
 // =================================================================
+//  Target.entity.generation difference changes hash
+// =================================================================
+
+static void test_target_generation_changes_hash() {
+    de::CrowdConfig cfg{};
+    cfg.agents_per_team = 3;
+
+    de::SimState sim1;
+    sim1.bootstrap_crowd(cfg);
+
+    de::SimState sim2;
+    sim2.bootstrap_crowd(cfg);
+
+    // Run a few ticks so targets get assigned.
+    for (int i = 0; i < 30; ++i) {
+        sim1.tick(1.0 / 60.0);
+        sim2.tick(1.0 / 60.0);
+    }
+
+    // Worlds are identical -- hash must match.
+    uint64_t h1 = de::compute_sim_hash(sim1.world, 30);
+    uint64_t h2 = de::compute_sim_hash(sim2.world, 30);
+    check(h1 == h2, "target_gen: identical before mutation");
+
+    // Mutate ONLY Target.entity.generation in sim2.
+    bool mutated = false;
+    sim2.world.each<de::CrowdAgent, de::Target>(
+        [&](de::EntityId, de::CrowdAgent&, de::Target& tgt) {
+            if (!mutated && tgt.has_target) {
+                tgt.entity.generation += 1;
+                mutated = true;
+            }
+        });
+    check(mutated, "target_gen: found a target to mutate");
+
+    // Recompute hash on mutated world -- must differ.
+    uint64_t h2_after = de::compute_sim_hash(sim2.world, 30);
+    check(h1 != h2_after,
+          "target_gen: generation-only change detected");
+}
+
+// =================================================================
+//  snapshot().tick_count matches the tick embedded in sim_hash
+// =================================================================
+
+static void test_tick_hash_coherence() {
+    de::CrowdConfig cfg{};
+    cfg.agents_per_team = 3;
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+
+    for (int i = 0; i < 5; ++i) sim.tick(1.0 / 60.0);
+
+    auto snap = sim.snapshot();
+
+    // Recompute the hash manually with the snapshot's tick_count.
+    uint64_t expected = de::compute_sim_hash(sim.world, snap.tick_count);
+    check(snap.sim_hash == expected,
+          "tick_coherence: snapshot tick_count matches hash");
+    check(snap.sim_hash == sim.sim_hash(),
+          "tick_coherence: accessor matches snapshot");
+}
+
+// =================================================================
 
 int main() {
     test_deterministic_identical_runs();
@@ -261,6 +326,8 @@ int main() {
     test_first_divergence_length_mismatch();
     test_snapshot_contains_hash();
     test_bootstrap_clears_history();
+    test_target_generation_changes_hash();
+    test_tick_hash_coherence();
 
     std::printf("\nSimHashTest: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail > 0 ? 1 : 0;

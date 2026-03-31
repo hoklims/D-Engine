@@ -16,8 +16,9 @@
 //
 // Hash strategy:
 //   FNV-1a 64-bit over: tick_count, living crowd agent count, then
-//   per-agent (sorted by EntityId.index): identity + Position + Velocity
-//   + Health + Target + AttackCooldown + BehaviorLod + Team.
+//   per-agent (sorted by EntityId.index): identity (index+generation) +
+//   Position + Velocity + Health + Target (full EntityId + has_target) +
+//   AttackCooldown + BehaviorLod + Team.
 //   Sorting by EntityId.index guarantees independence from archetype
 //   layout and swap-remove ordering.
 
@@ -90,6 +91,7 @@ inline uint64_t compute_sim_hash(World& world, uint64_t tick_count) {
         auto* tgt = world.get<Target>(id);
         if (tgt) {
             h.feed_value(tgt->entity.index);
+            h.feed_value(tgt->entity.generation);
             uint8_t has = tgt->has_target ? 1 : 0;
             h.feed_value(has);
         }
