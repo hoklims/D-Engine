@@ -55,6 +55,13 @@ struct SimBudgetResponseConfig {
 };
 
 // Runtime state of the budget response -- resets on bootstrap/shutdown.
+//
+// After tick N completes, this holds the PENDING state decided for tick N+1.
+// The state that was actually APPLIED during tick N is captured separately
+// in SimSnapshot (applied_* fields) at tick start.
+//
+// When the response is disabled mid-run, this state is immediately reset
+// to neutral (pressure 0, scale 1.0, active false).
 struct SimBudgetResponseState {
     uint8_t  pressure_level      = 0;     // 0 = no degradation, max = config.max_pressure
     uint32_t consecutive_healthy = 0;     // ticks since last violation
@@ -131,10 +138,20 @@ struct SimSnapshot {
     // Budget evaluation (this tick).
     SimBudgetStatus budget;
 
-    // Budget response telemetry (this tick).
-    uint8_t  budget_pressure_level  = 0;
-    bool     budget_response_active = false;
-    float    budget_lod_scale       = 1.0f;
+    // Budget response: APPLIED during this tick.
+    // These reflect the LOD degradation that actually ran during this
+    // tick's system pipeline.  On the first violation tick, applied
+    // values are still nominal (pressure 0, scale 1.0) because the
+    // decision hasn't taken effect yet.
+    uint8_t  budget_response_applied_pressure  = 0;
+    bool     budget_response_applied_active    = false;
+    float    budget_response_applied_lod_scale = 1.0f;
+
+    // Budget response: DECIDED at end of this tick for tick N+1.
+    // After a violation, pending_pressure increases immediately.
+    // This state will be applied at the start of the next tick.
+    uint8_t  budget_response_pending_pressure  = 0;
+    float    budget_response_pending_lod_scale = 1.0f;
 };
 
 // Signature for a fixed-step simulation system.
@@ -267,6 +284,9 @@ private:
     SimBudgetStatus         budget_status_;
     SimBudgetResponseConfig budget_response_config_;
     SimBudgetResponseState  budget_response_state_;
+    uint8_t  applied_pressure_  = 0;
+    float    applied_lod_scale_ = 1.0f;
+    bool     applied_active_    = false;
     float                   lod_base_t1_ = 30.0f;
     float                   lod_base_t2_ = 60.0f;
     float                   lod_base_t3_ = 100.0f;

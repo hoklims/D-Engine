@@ -66,6 +66,9 @@ void SimState::bootstrap() {
     budget_status_ = SimBudgetStatus{};
     // budget_response_config_ intentionally preserved across bootstrap.
     budget_response_state_ = SimBudgetResponseState{};
+    applied_pressure_  = 0;
+    applied_lod_scale_ = 1.0f;
+    applied_active_    = false;
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -117,6 +120,9 @@ void SimState::bootstrap_crowd(const CrowdConfig& cfg) {
     budget_status_ = SimBudgetStatus{};
     // budget_response_config_ intentionally preserved across bootstrap.
     budget_response_state_ = SimBudgetResponseState{};
+    applied_pressure_  = 0;
+    applied_lod_scale_ = 1.0f;
+    applied_active_    = false;
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -228,14 +234,25 @@ void SimState::tick(double step_dt) {
 
     // Apply budget response from previous tick (decision at tick N-1
     // applied at tick N).  Adjusts LOD thresholds before systems run.
-    if (budget_response_config_.enabled && budget_response_state_.active) {
+    // Guard mirrors apply_budget_response(): disabled or max_pressure==0
+    // means no degradation, even if the state carries stale pressure.
+    bool response_effective = budget_response_config_.enabled
+                           && budget_response_config_.max_pressure > 0
+                           && budget_response_state_.active;
+    if (response_effective) {
         lod_config_.t1_distance = lod_base_t1_ * budget_response_state_.lod_distance_scale;
         lod_config_.t2_distance = lod_base_t2_ * budget_response_state_.lod_distance_scale;
         lod_config_.t3_distance = lod_base_t3_ * budget_response_state_.lod_distance_scale;
+        applied_pressure_  = budget_response_state_.pressure_level;
+        applied_lod_scale_ = budget_response_state_.lod_distance_scale;
+        applied_active_    = true;
     } else {
         lod_config_.t1_distance = lod_base_t1_;
         lod_config_.t2_distance = lod_base_t2_;
         lod_config_.t3_distance = lod_base_t3_;
+        applied_pressure_  = 0;
+        applied_lod_scale_ = 1.0f;
+        applied_active_    = false;
     }
 
     set_behavior_lod_config(&lod_config_);
@@ -315,6 +332,9 @@ void SimState::shutdown() {
     budget_status_ = SimBudgetStatus{};
     // budget_response_config_ intentionally preserved across shutdown.
     budget_response_state_ = SimBudgetResponseState{};
+    applied_pressure_  = 0;
+    applied_lod_scale_ = 1.0f;
+    applied_active_    = false;
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -349,10 +369,12 @@ SimSnapshot SimState::snapshot() const {
     snap.melee_broadphase_checks        = melee_bp_checks_;
     snap.melee_pairs_this_tick          = melee_pairs_this_tick_;
     snap.melee_attacks_this_tick        = melee_attacks_this_tick_;
-    snap.budget                         = budget_status_;
-    snap.budget_pressure_level          = budget_response_state_.pressure_level;
-    snap.budget_response_active         = budget_response_state_.active;
-    snap.budget_lod_scale               = budget_response_state_.lod_distance_scale;
+    snap.budget                                = budget_status_;
+    snap.budget_response_applied_pressure      = applied_pressure_;
+    snap.budget_response_applied_active        = applied_active_;
+    snap.budget_response_applied_lod_scale     = applied_lod_scale_;
+    snap.budget_response_pending_pressure      = budget_response_state_.pressure_level;
+    snap.budget_response_pending_lod_scale     = budget_response_state_.lod_distance_scale;
     return snap;
 }
 
@@ -443,8 +465,13 @@ const SimBudgetResponseState& SimState::budget_response_state() const {
 }
 
 void SimState::apply_budget_response() {
-    if (!budget_response_config_.enabled) return;
-    if (budget_response_config_.max_pressure == 0) return;
+    // Hot-disable: if response is off, immediately reset state so the
+    // public API never shows stale pressure/scale from a previous run.
+    if (!budget_response_config_.enabled ||
+        budget_response_config_.max_pressure == 0) {
+        budget_response_state_ = SimBudgetResponseState{};
+        return;
+    }
 
     auto& st = budget_response_state_;
 
