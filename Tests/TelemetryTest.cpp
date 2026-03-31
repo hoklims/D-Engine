@@ -280,6 +280,75 @@ static void test_wip_reset_does_not_pollute_snapshot() {
 }
 
 // ---------------------------------------------------------------
+// Test 11: total_frame_s finalized before publish (destruction order)
+// Mirrors Engine::run -- ScopeTimer must be destroyed BEFORE publish.
+// ---------------------------------------------------------------
+static void test_total_frame_s_finalized_before_publish() {
+    de::FrameTelemetry published = {};
+    de::FrameTelemetry wip = {};
+
+    // -- Frame 1: full cycle with real ScopeTimer --
+    wip = {};
+    {
+        de::ScopeTimer total_timer(&wip.total_frame_s);
+
+        {
+            de::ScopeTimer t(&wip.begin_frame_s);
+            volatile double x = 0.0;
+            for (int i = 0; i < 2000; ++i) { x += 1.0; }
+        }
+
+        {
+            de::ScopeTimer t(&wip.fixed_update_s, true);
+            volatile double x = 0.0;
+            for (int i = 0; i < 2000; ++i) { x += 1.0; }
+        }
+        ++wip.fixed_step_count;
+
+        {
+            de::ScopeTimer t(&wip.render_s);
+            volatile double x = 0.0;
+            for (int i = 0; i < 2000; ++i) { x += 1.0; }
+        }
+
+        {
+            de::ScopeTimer t(&wip.end_frame_s);
+            volatile double x = 0.0;
+            for (int i = 0; i < 100; ++i) { x += 1.0; }
+        }
+    } // total_timer destroyed -- total_frame_s now final
+
+    published = wip;
+
+    // total_frame_s must be positive and >= sum of parts
+    double parts = wip.begin_frame_s + wip.fixed_update_s
+                 + wip.render_s + wip.end_frame_s;
+
+    check(published.total_frame_s > 0.0,
+          "total_frame_s > 0 in published snapshot");
+    check(published.total_frame_s >= parts,
+          "total_frame_s >= sum of parts in published snapshot");
+
+    // -- Frame 2: early exit after begin_frame --
+    wip = {};
+    {
+        de::ScopeTimer total_timer(&wip.total_frame_s);
+        {
+            de::ScopeTimer t(&wip.begin_frame_s);
+            volatile double x = 0.0;
+            for (int i = 0; i < 100; ++i) { x += 1.0; }
+        }
+        // simulate running_ = false -> break
+    } // total_timer destroyed but we do NOT publish
+
+    // Published must still hold frame 1 values
+    check(published.total_frame_s >= parts,
+          "early exit: published total_frame_s preserved from frame 1");
+    check(published.fixed_step_count == 1,
+          "early exit: published fixed_step_count preserved from frame 1");
+}
+
+// ---------------------------------------------------------------
 int main() {
     test_default_zeroed();
     test_reset_clears_all();
@@ -291,6 +360,7 @@ int main() {
     test_publish_on_complete_frame();
     test_early_exit_preserves_snapshot();
     test_wip_reset_does_not_pollute_snapshot();
+    test_total_frame_s_finalized_before_publish();
 
     std::printf("\nResults: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail > 0 ? 1 : 0;
