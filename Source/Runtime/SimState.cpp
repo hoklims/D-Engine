@@ -179,6 +179,7 @@ void SimState::register_crowd_systems() {
     add_system("ComputeDesiredMove", compute_desired_movement);
     add_system("ApplyCrowdSteer",    apply_crowd_steering);
     add_system("AttackTargets",      attack_targets);
+    add_system("ResolveDamage",      resolve_damage);
     add_system("RemoveDead",         remove_dead);
     add_system("IntegrateVelocity",  integrate_velocity);
     add_system("IntegratePosition",  integrate_position);
@@ -193,7 +194,8 @@ void SimState::update_crowd_stats() {
         [&](EntityId, CrowdAgent&, Team& team, Target& tgt) {
             ++crowd_agent_count_;
             if (team.id < k_max_teams) ++team_counts_[team.id];
-            if (tgt.has_target) ++agents_with_target_;
+            if (tgt.has_target && world.alive(tgt.entity))
+                ++agents_with_target_;
         });
 }
 

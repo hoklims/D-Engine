@@ -197,7 +197,7 @@ static void test_crowd_system_order() {
     sim.tick(1.0);
 
     de::SimSnapshot snap = sim.snapshot();
-    check(snap.system_count == 7, "system_order: 7 systems registered");
+    check(snap.system_count == 8, "system_order: 8 systems registered");
 
     check(std::strcmp(snap.systems[0].name, "SelectTargets") == 0,
           "system_order: [0] SelectTargets");
@@ -207,12 +207,14 @@ static void test_crowd_system_order() {
           "system_order: [2] ApplyCrowdSteer");
     check(std::strcmp(snap.systems[3].name, "AttackTargets") == 0,
           "system_order: [3] AttackTargets");
-    check(std::strcmp(snap.systems[4].name, "RemoveDead") == 0,
-          "system_order: [4] RemoveDead");
-    check(std::strcmp(snap.systems[5].name, "IntegrateVelocity") == 0,
-          "system_order: [5] IntegrateVelocity");
-    check(std::strcmp(snap.systems[6].name, "IntegratePosition") == 0,
-          "system_order: [6] IntegratePosition");
+    check(std::strcmp(snap.systems[4].name, "ResolveDamage") == 0,
+          "system_order: [4] ResolveDamage");
+    check(std::strcmp(snap.systems[5].name, "RemoveDead") == 0,
+          "system_order: [5] RemoveDead");
+    check(std::strcmp(snap.systems[6].name, "IntegrateVelocity") == 0,
+          "system_order: [6] IntegrateVelocity");
+    check(std::strcmp(snap.systems[7].name, "IntegratePosition") == 0,
+          "system_order: [7] IntegratePosition");
 }
 
 // =================================================================
@@ -283,8 +285,8 @@ static void test_crowd_bootstrap_idempotent() {
     de::SimSnapshot snap = sim.snapshot();
     check(snap.tick_count == 0,
           "crowd_idempotent: tick_count reset");
-    check(snap.system_count == 7,
-          "crowd_idempotent: 7 systems, not 14");
+    check(snap.system_count == 8,
+          "crowd_idempotent: 8 systems, not 16");
     check(snap.crowd_agent_count == 20,
           "crowd_idempotent: crowd metrics correct after re-bootstrap");
 }
@@ -469,6 +471,160 @@ static void test_combat_full_battle() {
 }
 
 // =================================================================
+//  agents_with_target excludes stale targets after death
+// =================================================================
+
+static void test_contract_target_metric_excludes_dead() {
+    de::SimState sim;
+    sim.bootstrap_crowd();
+
+    de::EntityId a = {0, 1};
+    de::EntityId b = {10, 1};
+    sim.world.get<de::Position>(a)->x = 0.0f;
+    sim.world.get<de::Position>(a)->y = 0.0f;
+    sim.world.get<de::Position>(b)->x = 1.5f;
+    sim.world.get<de::Position>(b)->y = 0.0f;
+    sim.world.get<de::Health>(b)->current = 5.0f;
+    sim.world.get<de::AttackCooldown>(b)->remaining = 100.0f;
+    sim.world.get<de::AttackCooldown>(b)->interval = 100.0f;
+
+    sim.tick(1.0);
+
+    // B is dead. A's Target still has has_target==true pointing at B.
+    // The snapshot must NOT count A as "with target".
+    de::SimSnapshot snap = sim.snapshot();
+    check(!sim.world.alive(b),
+          "target_metric: B is dead");
+
+    // A still has has_target flag set, but target entity is dead.
+    auto* tgt_a = sim.world.get<de::Target>(a);
+    check(tgt_a && tgt_a->has_target,
+          "target_metric: A still has stale has_target flag");
+
+    // The metric must not count stale targets.
+    // 18 surviving agents (excl A) should have valid targets pointing
+    // at living enemies. A's target is stale => not counted.
+    check(snap.agents_with_target <= snap.crowd_agent_count,
+          "target_metric: agents_with_target <= crowd_agent_count");
+
+    // Specifically: A has a stale target so should NOT be counted.
+    // Count manually how many have truly valid targets.
+    uint32_t truly_valid = 0;
+    sim.world.each<de::CrowdAgent, de::Target>(
+        [&](de::EntityId, de::CrowdAgent&, de::Target& t) {
+            if (t.has_target && sim.world.alive(t.entity)) ++truly_valid;
+        });
+    check(snap.agents_with_target == truly_valid,
+          "target_metric: snapshot matches ground truth");
+}
+
+// =================================================================
+//  Simultaneous lethal exchange: both agents die in the same tick
+// =================================================================
+
+static void test_contract_simultaneous_lethal() {
+    de::SimState sim;
+    sim.bootstrap_crowd();
+
+    de::EntityId a = {0, 1};
+    de::EntityId b = {10, 1};
+    // Place within attack range.
+    sim.world.get<de::Position>(a)->x = 0.0f;
+    sim.world.get<de::Position>(a)->y = 0.0f;
+    sim.world.get<de::Position>(b)->x = 1.0f;
+    sim.world.get<de::Position>(b)->y = 0.0f;
+    // Both have exactly enough HP to die from one hit.
+    sim.world.get<de::Health>(a)->current = 10.0f;
+    sim.world.get<de::Health>(b)->current = 10.0f;
+    // damage = 10 (default), so each kills the other.
+
+    sim.tick(1.0);
+
+    // Simultaneous combat: both must die, regardless of iteration order.
+    check(!sim.world.alive(a),
+          "simultaneous_lethal: A dies");
+    check(!sim.world.alive(b),
+          "simultaneous_lethal: B dies");
+    check(sim.world.entity_count() == 18,
+          "simultaneous_lethal: 18 entities remain");
+}
+
+// =================================================================
+//  Damage is order-independent: 3 attackers on same target
+// =================================================================
+
+static void test_contract_damage_order_independent() {
+    de::SimState sim;
+    sim.bootstrap_crowd();
+
+    // Place 3 team-0 agents within range of 1 team-1 agent.
+    de::EntityId a0 = {0, 1};
+    de::EntityId a1 = {1, 1};
+    de::EntityId a2 = {2, 1};
+    de::EntityId b  = {10, 1};
+    sim.world.get<de::Position>(a0)->x = 0.0f;
+    sim.world.get<de::Position>(a0)->y = 0.0f;
+    sim.world.get<de::Position>(a1)->x = 0.5f;
+    sim.world.get<de::Position>(a1)->y = 0.0f;
+    sim.world.get<de::Position>(a2)->x = -0.5f;
+    sim.world.get<de::Position>(a2)->y = 0.0f;
+    sim.world.get<de::Position>(b)->x = 1.0f;
+    sim.world.get<de::Position>(b)->y = 0.0f;
+    // B won't attack back.
+    sim.world.get<de::AttackCooldown>(b)->remaining = 100.0f;
+    sim.world.get<de::AttackCooldown>(b)->interval = 100.0f;
+    // damage = 10 each, so B takes 3 * 10 = 30.
+    sim.world.get<de::Health>(b)->current = 100.0f;
+
+    sim.tick(1.0);
+
+    // Because damage is resolved simultaneously, B takes exactly 30.
+    auto* hp_b = sim.world.get<de::Health>(b);
+    check(hp_b && approx(hp_b->current, 70.0f),
+          "order_independent: B HP == 70 (100 - 3*10)");
+}
+
+// =================================================================
+//  Snapshot coherent after combat with deaths
+// =================================================================
+
+static void test_contract_snapshot_coherent_after_deaths() {
+    de::SimState sim;
+    sim.bootstrap_crowd();
+
+    // Kill all of team 1 in one tick: set HP to 5, team 0 deals 10.
+    // Keep y spread so each attacker targets a unique defender (1-to-1).
+    sim.world.each<de::CrowdAgent, de::Team, de::Health, de::Position>(
+        [](de::EntityId, de::CrowdAgent&, de::Team& t,
+           de::Health& hp, de::Position& p) {
+            if (t.id == 1) hp.current = 5.0f;
+            p.x = (t.id == 0) ? 0.0f : 1.0f;
+        });
+    // Prevent team 1 from attacking back.
+    sim.world.each<de::CrowdAgent, de::Team, de::AttackCooldown>(
+        [](de::EntityId, de::CrowdAgent&, de::Team& t, de::AttackCooldown& cd) {
+            if (t.id == 1) { cd.remaining = 100.0f; cd.interval = 100.0f; }
+        });
+
+    sim.tick(1.0);
+
+    de::SimSnapshot snap = sim.snapshot();
+    check(snap.crowd_agent_count == 10,
+          "coherent_deaths: 10 agents survive");
+    check(snap.team_counts[0] == 10,
+          "coherent_deaths: team 0 intact");
+    check(snap.team_counts[1] == 0,
+          "coherent_deaths: team 1 wiped");
+    check(snap.deaths_this_tick == 10,
+          "coherent_deaths: 10 deaths this tick");
+    check(snap.entity_count == 10,
+          "coherent_deaths: entity_count == 10");
+    // No surviving agent should have a valid target (all enemies dead).
+    check(snap.agents_with_target == 0,
+          "coherent_deaths: no valid targets after team wipe");
+}
+
+// =================================================================
 //  main
 // =================================================================
 
@@ -493,6 +649,12 @@ int main() {
     test_combat_deferred_death();
     test_combat_snapshot_metrics();
     test_combat_full_battle();
+
+    // Contract tests
+    test_contract_target_metric_excludes_dead();
+    test_contract_simultaneous_lethal();
+    test_contract_damage_order_independent();
+    test_contract_snapshot_coherent_after_deaths();
 
     std::printf("\nCrowdTest results: %d passed, %d failed\n",
                 g_pass, g_fail);

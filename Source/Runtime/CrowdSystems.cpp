@@ -4,17 +4,24 @@
 
 #include <cfloat>
 #include <cmath>
+#include <vector>
 
 namespace de {
 
-// -- Per-tick combat counters (file scope) -----------------------------------
+// -- Per-tick combat state (file scope) --------------------------------------
 
+struct HitEvent {
+    EntityId target;
+    float    damage;
+};
+
+static std::vector<HitEvent> s_hit_buffer;
 static uint32_t s_attacks_this_tick = 0;
 static uint32_t s_deaths_this_tick  = 0;
 
 uint32_t crowd_attacks_this_tick()       { return s_attacks_this_tick; }
 uint32_t crowd_deaths_queued_this_tick() { return s_deaths_this_tick; }
-void     reset_crowd_tick_counters()     { s_attacks_this_tick = 0; s_deaths_this_tick = 0; }
+void     reset_crowd_tick_counters()     { s_attacks_this_tick = 0; s_deaths_this_tick = 0; s_hit_buffer.clear(); }
 
 // -----------------------------------------------------------------------
 //  select_targets
@@ -131,10 +138,12 @@ uint32_t apply_crowd_steering(WorldView& view, float /*dt*/,
 // -----------------------------------------------------------------------
 //  attack_targets
 // -----------------------------------------------------------------------
-// Tick cooldowns.  When in range and cooldown ready, deal damage.
+// Tick cooldowns.  When in range and cooldown ready, emit a HitEvent.
+// Does NOT modify Health -- that is resolve_damage's job.
 
 uint32_t attack_targets(WorldView& view, float dt, CommandBuffer& /*cmds*/) {
     s_attacks_this_tick = 0;
+    s_hit_buffer.clear();
     uint32_t count = 0;
     view.each<CrowdAgent, Position, Target, AttackRange,
               AttackDamage, AttackCooldown>(
@@ -154,13 +163,29 @@ uint32_t attack_targets(WorldView& view, float dt, CommandBuffer& /*cmds*/) {
             if (dist > range.range) return;
             if (cd.remaining > 0.0f) return;
 
-            auto* target_hp = view.get<Health>(tgt.entity);
-            if (target_hp) {
-                target_hp->current -= dmg.damage;
-                ++s_attacks_this_tick;
-            }
+            s_hit_buffer.push_back({tgt.entity, dmg.damage});
+            ++s_attacks_this_tick;
             cd.remaining = cd.interval;
         });
+    return count;
+}
+
+// -----------------------------------------------------------------------
+//  resolve_damage
+// -----------------------------------------------------------------------
+// Consume all hit events and apply damage to Health components.
+// Runs after attack_targets so all attacks are collected before any
+// HP is modified -- guarantees simultaneous resolution.
+
+uint32_t resolve_damage(WorldView& view, float /*dt*/, CommandBuffer& /*cmds*/) {
+    uint32_t count = 0;
+    for (const auto& hit : s_hit_buffer) {
+        auto* hp = view.get<Health>(hit.target);
+        if (hp) {
+            hp->current -= hit.damage;
+            ++count;
+        }
+    }
     return count;
 }
 

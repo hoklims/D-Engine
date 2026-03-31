@@ -9,7 +9,7 @@
 
 namespace de {
 
-static constexpr uint32_t k_max_sim_systems  = 8;
+static constexpr uint32_t k_max_sim_systems  = 16;
 static constexpr uint32_t k_system_name_max  = 32;
 static constexpr uint32_t k_max_teams        = 4;
 

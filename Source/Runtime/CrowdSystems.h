@@ -7,7 +7,18 @@
 
 namespace de {
 
-// Crowd pipeline systems -- run in this order before physics integration.
+// Crowd combat contract -- simultaneous damage resolution
+//
+// Pipeline order:
+//   SelectTargets > ComputeDesiredMove > ApplyCrowdSteer >
+//   AttackTargets > ResolveDamage > RemoveDead >
+//   IntegrateVelocity > IntegratePosition
+//
+// AttackTargets produces hit events into a buffer without modifying HP.
+// ResolveDamage consumes the buffer and applies all damage at once.
+// This guarantees that the result is independent of iteration order:
+// every agent alive at the start of the tick gets to act, and all
+// damage is applied simultaneously before death checks.
 
 // Pick the nearest enemy as pursuit target.
 uint32_t select_targets(WorldView& view, float dt, CommandBuffer& cmds);
@@ -19,8 +30,12 @@ uint32_t compute_desired_movement(WorldView& view, float dt, CommandBuffer& cmds
 // Set velocity = desired_direction * move_speed (instant steering).
 uint32_t apply_crowd_steering(WorldView& view, float dt, CommandBuffer& cmds);
 
-// Tick cooldowns, deal damage when in range and ready.
+// Tick cooldowns, produce hit events when in range and ready.
+// Does NOT modify Health directly -- damage is deferred to ResolveDamage.
 uint32_t attack_targets(WorldView& view, float dt, CommandBuffer& cmds);
+
+// Consume hit events and apply accumulated damage to Health components.
+uint32_t resolve_damage(WorldView& view, float dt, CommandBuffer& cmds);
 
 // Queue CommandBuffer::destroy for agents whose health <= 0.
 uint32_t remove_dead(WorldView& view, float dt, CommandBuffer& cmds);
