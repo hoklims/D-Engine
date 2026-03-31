@@ -58,9 +58,14 @@ void SimState::bootstrap() {
     melee_pairs_this_tick_       = 0;
     melee_attacks_this_tick_     = 0;
     lod_config_                  = BehaviorLodConfig{};
+    lod_base_t1_ = lod_config_.t1_distance;
+    lod_base_t2_ = lod_config_.t2_distance;
+    lod_base_t3_ = lod_config_.t3_distance;
     hash_history_.clear();
     // budget_config_ intentionally preserved across bootstrap.
     budget_status_ = SimBudgetStatus{};
+    // budget_response_config_ intentionally preserved across bootstrap.
+    budget_response_state_ = SimBudgetResponseState{};
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -104,9 +109,14 @@ void SimState::bootstrap_crowd(const CrowdConfig& cfg) {
     melee_pairs_this_tick_       = 0;
     melee_attacks_this_tick_     = 0;
     lod_config_                  = BehaviorLodConfig{};
+    lod_base_t1_ = lod_config_.t1_distance;
+    lod_base_t2_ = lod_config_.t2_distance;
+    lod_base_t3_ = lod_config_.t3_distance;
     hash_history_.clear();
     // budget_config_ intentionally preserved across bootstrap.
     budget_status_ = SimBudgetStatus{};
+    // budget_response_config_ intentionally preserved across bootstrap.
+    budget_response_state_ = SimBudgetResponseState{};
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -215,6 +225,19 @@ void SimState::tick(double step_dt) {
     cmds_.clear();
     reset_crowd_tick_counters();
     set_crowd_tick_count(tick_count_);
+
+    // Apply budget response from previous tick (decision at tick N-1
+    // applied at tick N).  Adjusts LOD thresholds before systems run.
+    if (budget_response_config_.enabled && budget_response_state_.active) {
+        lod_config_.t1_distance = lod_base_t1_ * budget_response_state_.lod_distance_scale;
+        lod_config_.t2_distance = lod_base_t2_ * budget_response_state_.lod_distance_scale;
+        lod_config_.t3_distance = lod_base_t3_ * budget_response_state_.lod_distance_scale;
+    } else {
+        lod_config_.t1_distance = lod_base_t1_;
+        lod_config_.t2_distance = lod_base_t2_;
+        lod_config_.t3_distance = lod_base_t3_;
+    }
+
     set_behavior_lod_config(&lod_config_);
 
     WorldView view(world);
@@ -257,6 +280,7 @@ void SimState::tick(double step_dt) {
     auto tick_end = std::chrono::high_resolution_clock::now();
     double tick_wall_s = std::chrono::duration<double>(tick_end - tick_start).count();
     evaluate_budget(tick_wall_s);
+    apply_budget_response();
 }
 
 void SimState::shutdown() {
@@ -283,9 +307,14 @@ void SimState::shutdown() {
     melee_pairs_this_tick_       = 0;
     melee_attacks_this_tick_     = 0;
     lod_config_                  = BehaviorLodConfig{};
+    lod_base_t1_ = lod_config_.t1_distance;
+    lod_base_t2_ = lod_config_.t2_distance;
+    lod_base_t3_ = lod_config_.t3_distance;
     hash_history_.clear();
     // budget_config_ intentionally preserved across shutdown.
     budget_status_ = SimBudgetStatus{};
+    // budget_response_config_ intentionally preserved across shutdown.
+    budget_response_state_ = SimBudgetResponseState{};
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
@@ -321,6 +350,9 @@ SimSnapshot SimState::snapshot() const {
     snap.melee_pairs_this_tick          = melee_pairs_this_tick_;
     snap.melee_attacks_this_tick        = melee_attacks_this_tick_;
     snap.budget                         = budget_status_;
+    snap.budget_pressure_level          = budget_response_state_.pressure_level;
+    snap.budget_response_active         = budget_response_state_.active;
+    snap.budget_lod_scale               = budget_response_state_.lod_distance_scale;
     return snap;
 }
 
@@ -400,6 +432,46 @@ void SimState::set_budget_config(const SimBudgetConfig& cfg) {
 
 const SimBudgetStatus& SimState::budget_status() const {
     return budget_status_;
+}
+
+void SimState::set_budget_response_config(const SimBudgetResponseConfig& cfg) {
+    budget_response_config_ = cfg;
+}
+
+const SimBudgetResponseState& SimState::budget_response_state() const {
+    return budget_response_state_;
+}
+
+void SimState::apply_budget_response() {
+    if (!budget_response_config_.enabled) return;
+    if (budget_response_config_.max_pressure == 0) return;
+
+    auto& st = budget_response_state_;
+
+    if (!budget_status_.within_budget) {
+        // Over budget: increase pressure immediately (capped).
+        st.consecutive_healthy = 0;
+        if (st.pressure_level < budget_response_config_.max_pressure) {
+            ++st.pressure_level;
+        }
+    } else {
+        // Within budget: count consecutive healthy ticks.
+        ++st.consecutive_healthy;
+        if (st.pressure_level > 0 &&
+            st.consecutive_healthy >= budget_response_config_.recovery_ticks) {
+            --st.pressure_level;
+            st.consecutive_healthy = 0;
+        }
+    }
+
+    // Compute LOD distance scale from pressure level.
+    st.lod_distance_scale = 1.0f -
+        static_cast<float>(st.pressure_level) *
+        budget_response_config_.shrink_per_level;
+    // Clamp to a small positive floor to avoid zero/negative thresholds.
+    if (st.lod_distance_scale < 0.05f) st.lod_distance_scale = 0.05f;
+
+    st.active = (st.pressure_level > 0);
 }
 
 void SimState::evaluate_budget(double tick_wall_s) {

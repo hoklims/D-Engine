@@ -35,6 +35,33 @@ struct SimBudgetConfig {
     uint32_t max_lod_t0_count      = 200;     // full-fidelity agent cap
 };
 
+// Budget response policy -- controls automatic LOD degradation.
+//
+// Contract:
+//   What CAN be degraded: LOD distance thresholds (t1/t2/t3_distance)
+//     -> pushes agents to higher tiers -> gated systems do less work.
+//   What MUST NOT be degraded: combat core (AttackTargets, ResolveDamage,
+//     RemoveDead), physics (IntegrateVelocity, IntegratePosition),
+//     target selection (SelectTargets), melee broadphase (MeleeBroadphase).
+//   When: response computed after tick N evaluation, applied at tick N+1.
+//     Never mid-tick.
+//
+// Persists across bootstrap()/shutdown() (like SimBudgetConfig).
+struct SimBudgetResponseConfig {
+    uint8_t  max_pressure       = 4;      // max degradation level (0 disables)
+    float    shrink_per_level   = 0.20f;  // LOD threshold reduction per level
+    uint32_t recovery_ticks     = 3;      // consecutive healthy ticks to reduce pressure by 1
+    bool     enabled            = false;  // must be explicitly enabled
+};
+
+// Runtime state of the budget response -- resets on bootstrap/shutdown.
+struct SimBudgetResponseState {
+    uint8_t  pressure_level      = 0;     // 0 = no degradation, max = config.max_pressure
+    uint32_t consecutive_healthy = 0;     // ticks since last violation
+    bool     active              = false; // true when pressure_level > 0
+    float    lod_distance_scale  = 1.0f;  // current multiplier on LOD thresholds
+};
+
 // Result of per-tick budget evaluation.  Read-only diagnostic.
 struct SimBudgetStatus {
     bool     within_budget         = true;
@@ -103,6 +130,11 @@ struct SimSnapshot {
 
     // Budget evaluation (this tick).
     SimBudgetStatus budget;
+
+    // Budget response telemetry (this tick).
+    uint8_t  budget_pressure_level  = 0;
+    bool     budget_response_active = false;
+    float    budget_lod_scale       = 1.0f;
 };
 
 // Signature for a fixed-step simulation system.
@@ -190,6 +222,9 @@ struct SimState {
     void set_budget_config(const SimBudgetConfig& cfg);
     const SimBudgetStatus& budget_status() const;
 
+    void set_budget_response_config(const SimBudgetResponseConfig& cfg);
+    const SimBudgetResponseState& budget_response_state() const;
+
     SimSnapshot snapshot() const;
     uint32_t    system_count() const;
 
@@ -228,8 +263,13 @@ private:
     uint32_t      melee_attacks_this_tick_   = 0;
     BehaviorLodConfig lod_config_;
     SimHashHistory    hash_history_;
-    SimBudgetConfig   budget_config_;
-    SimBudgetStatus   budget_status_;
+    SimBudgetConfig         budget_config_;
+    SimBudgetStatus         budget_status_;
+    SimBudgetResponseConfig budget_response_config_;
+    SimBudgetResponseState  budget_response_state_;
+    float                   lod_base_t1_ = 30.0f;
+    float                   lod_base_t2_ = 60.0f;
+    float                   lod_base_t3_ = 100.0f;
 
     void register_systems();
     void register_crowd_systems();
@@ -237,6 +277,7 @@ private:
     void cull_pre_dead();
     void build_nav_fields();
     void evaluate_budget(double tick_wall_s);
+    void apply_budget_response();
 };
 
 // Run a bootstrapped SimState for N ticks, collecting the hash after each.

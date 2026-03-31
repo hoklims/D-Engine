@@ -87,3 +87,12 @@ add_executable(BudgetTest
 target_link_libraries(BudgetTest PRIVATE DEcs)
 target_include_directories(BudgetTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
 add_test(NAME BudgetTest COMMAND BudgetTest)
+
+add_executable(BudgetResponseTest
+    BudgetResponseTest.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/SimState.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/CrowdSystems.cpp
+)
+target_link_libraries(BudgetResponseTest PRIVATE DEcs)
+target_include_directories(BudgetResponseTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
+add_test(NAME BudgetResponseTest COMMAND BudgetResponseTest)
