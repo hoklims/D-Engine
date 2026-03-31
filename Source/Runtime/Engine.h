@@ -5,6 +5,8 @@
 #include "Runtime/EngineConfig.h"
 #include "Runtime/FixedStep.h"
 #include "Runtime/FrameInfo.h"
+#include "Runtime/FrameTelemetry.h"
+#include "Runtime/ScopeTimer.h"
 
 namespace de {
 
@@ -15,6 +17,7 @@ struct Engine {
     void shutdown();
 
     const FrameInfo& frame_info() const;
+    const FrameTelemetry& frame_telemetry() const;
 
 private:
     EngineConfig config_;
@@ -22,6 +25,7 @@ private:
     Clock clock_;
     FixedStep fixed_step_;
     FrameInfo frame_info_;
+    FrameTelemetry telemetry_;
     bool running_ = false;
 
     void begin_frame();

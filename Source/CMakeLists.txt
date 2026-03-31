@@ -8,6 +8,9 @@ add_executable(DEngine WIN32
     Runtime/Clock.cpp
     Runtime/FixedStep.h
     Runtime/FixedStep.cpp
+    Runtime/FrameTelemetry.h
+    Runtime/ScopeTimer.h
+    Runtime/ScopeTimer.cpp
     Platform/Window.h
     Platform/Window.cpp
 )
