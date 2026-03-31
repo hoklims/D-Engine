@@ -11,6 +11,7 @@ namespace de {
 
 static constexpr uint32_t k_max_sim_systems  = 8;
 static constexpr uint32_t k_system_name_max  = 32;
+static constexpr uint32_t k_max_teams        = 4;
 
 // Per-system telemetry from the last tick.
 struct SystemStats {
@@ -27,6 +28,11 @@ struct SimSnapshot {
     uint32_t    cmds_queued   = 0;
     uint32_t    cmds_applied  = 0;
     SystemStats systems[k_max_sim_systems] = {};
+
+    // Crowd metrics.
+    uint32_t    crowd_agent_count  = 0;
+    uint32_t    agents_with_target = 0;
+    uint32_t    team_counts[k_max_teams] = {};
 };
 
 // Signature for a fixed-step simulation system.
@@ -64,6 +70,7 @@ struct SimState {
     World world;
 
     void bootstrap();
+    void bootstrap_crowd();
     void tick(double step_dt);
     void shutdown();
 
@@ -81,7 +88,13 @@ private:
     SystemStats   last_stats_[k_max_sim_systems] = {};
     CommandBuffer cmds_;
 
+    uint32_t      crowd_agent_count_   = 0;
+    uint32_t      agents_with_target_  = 0;
+    uint32_t      team_counts_[k_max_teams] = {};
+
     void register_systems();
+    void register_crowd_systems();
+    void update_crowd_stats();
 };
 
 }  // namespace de

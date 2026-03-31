@@ -1,4 +1,6 @@
 #include "Runtime/SimState.h"
+#include "Runtime/CrowdComponents.h"
+#include "Runtime/CrowdSystems.h"
 
 #include <chrono>
 #include <cstdio>
@@ -38,6 +40,9 @@ void SimState::bootstrap() {
     system_count_      = 0;
     cmds_queued_last_  = 0;
     cmds_applied_last_ = 0;
+    crowd_agent_count_  = 0;
+    agents_with_target_ = 0;
+    for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
 
@@ -50,6 +55,42 @@ void SimState::bootstrap() {
         world.set(e, Velocity{1.0f, 0.5f});
         world.set(e, Acceleration{0.0f, 0.0f});
     }
+}
+
+void SimState::bootstrap_crowd() {
+    world = World{};
+    tick_count_        = 0;
+    system_count_      = 0;
+    cmds_queued_last_  = 0;
+    cmds_applied_last_ = 0;
+    crowd_agent_count_  = 0;
+    agents_with_target_ = 0;
+    for (auto& c : team_counts_) c = 0;
+    cmds_.clear();
+    for (auto& s : last_stats_) s = {};
+
+    register_crowd_systems();
+
+    constexpr int   agents_per_team = 10;
+    constexpr float team_spacing    = 20.0f;
+    constexpr float agent_spread    = 2.0f;
+
+    for (int team = 0; team < 2; ++team) {
+        float base_x = (team == 0) ? -team_spacing : team_spacing;
+        for (int i = 0; i < agents_per_team; ++i) {
+            EntityId e = world.create();
+            world.set(e, CrowdAgent{});
+            world.set(e, Team{static_cast<uint8_t>(team)});
+            world.set(e, Position{base_x, static_cast<float>(i) * agent_spread});
+            world.set(e, Velocity{0.0f, 0.0f});
+            world.set(e, MoveSpeed{3.0f});
+            world.set(e, Target{});
+            world.set(e, DesiredDirection{});
+            world.set(e, Health{100.0f, 100.0f});
+        }
+    }
+
+    update_crowd_stats();
 }
 
 void SimState::tick(double step_dt) {
@@ -73,6 +114,8 @@ void SimState::tick(double step_dt) {
     cmds_.apply(world);
     cmds_applied_last_ = cmds_.last_applied_count();
 
+    update_crowd_stats();
+
     ++tick_count_;
 }
 
@@ -82,6 +125,9 @@ void SimState::shutdown() {
     system_count_      = 0;
     cmds_queued_last_  = 0;
     cmds_applied_last_ = 0;
+    crowd_agent_count_  = 0;
+    agents_with_target_ = 0;
+    for (auto& c : team_counts_) c = 0;
     cmds_.clear();
     for (auto& s : last_stats_) s = {};
 }
@@ -96,6 +142,11 @@ SimSnapshot SimState::snapshot() const {
     for (uint32_t i = 0; i < system_count_; ++i) {
         snap.systems[i] = last_stats_[i];
     }
+    snap.crowd_agent_count  = crowd_agent_count_;
+    snap.agents_with_target = agents_with_target_;
+    for (uint32_t i = 0; i < k_max_teams; ++i) {
+        snap.team_counts[i] = team_counts_[i];
+    }
     return snap;
 }
 
@@ -106,6 +157,27 @@ uint32_t SimState::system_count() const {
 void SimState::register_systems() {
     add_system("IntegrateVelocity", integrate_velocity);
     add_system("IntegratePosition", integrate_position);
+}
+
+void SimState::register_crowd_systems() {
+    add_system("SelectTargets",      select_targets);
+    add_system("ComputeDesiredMove", compute_desired_movement);
+    add_system("ApplyCrowdSteer",    apply_crowd_steering);
+    add_system("IntegrateVelocity",  integrate_velocity);
+    add_system("IntegratePosition",  integrate_position);
+}
+
+void SimState::update_crowd_stats() {
+    crowd_agent_count_  = 0;
+    agents_with_target_ = 0;
+    for (auto& c : team_counts_) c = 0;
+
+    world.each<CrowdAgent, Team, Target>(
+        [&](EntityId, CrowdAgent&, Team& team, Target& tgt) {
+            ++crowd_agent_count_;
+            if (team.id < k_max_teams) ++team_counts_[team.id];
+            if (tgt.has_target) ++agents_with_target_;
+        });
 }
 
 void SimState::add_system(const char* name, FixedSystemFn fn) {

@@ -28,7 +28,17 @@ add_test(NAME EcsTest COMMAND EcsTest)
 add_executable(RuntimeEcsTest
     RuntimeEcsTest.cpp
     ${CMAKE_SOURCE_DIR}/Source/Runtime/SimState.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/CrowdSystems.cpp
 )
 target_link_libraries(RuntimeEcsTest PRIVATE DEcs)
 target_include_directories(RuntimeEcsTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
 add_test(NAME RuntimeEcsTest COMMAND RuntimeEcsTest)
+
+add_executable(CrowdTest
+    CrowdTest.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/SimState.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/CrowdSystems.cpp
+)
+target_link_libraries(CrowdTest PRIVATE DEcs)
+target_include_directories(CrowdTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
+add_test(NAME CrowdTest COMMAND CrowdTest)

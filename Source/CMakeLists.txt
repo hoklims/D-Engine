@@ -13,6 +13,9 @@ add_executable(DEngine WIN32
     Runtime/ScopeTimer.cpp
     Runtime/CommandBuffer.h
     Runtime/Components.h
+    Runtime/CrowdComponents.h
+    Runtime/CrowdSystems.h
+    Runtime/CrowdSystems.cpp
     Runtime/SimState.h
     Runtime/SimState.cpp
     Platform/Window.h
