@@ -59,7 +59,7 @@ void SimState::bootstrap() {
     melee_attacks_this_tick_     = 0;
     lod_config_                  = BehaviorLodConfig{};
     hash_history_.clear();
-    budget_config_ = SimBudgetConfig{};
+    // budget_config_ intentionally preserved across bootstrap.
     budget_status_ = SimBudgetStatus{};
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
@@ -105,7 +105,7 @@ void SimState::bootstrap_crowd(const CrowdConfig& cfg) {
     melee_attacks_this_tick_     = 0;
     lod_config_                  = BehaviorLodConfig{};
     hash_history_.clear();
-    budget_config_ = SimBudgetConfig{};
+    // budget_config_ intentionally preserved across bootstrap.
     budget_status_ = SimBudgetStatus{};
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
@@ -205,6 +205,10 @@ void SimState::build_nav_fields() {
 }
 
 void SimState::tick(double step_dt) {
+    // Wall-clock timer covers all simulation work (cull, systems, apply,
+    // stats, hash).  evaluate_budget() runs outside the measured region.
+    auto tick_start = std::chrono::high_resolution_clock::now();
+
     cull_pre_dead();
 
     float dt = static_cast<float>(step_dt);
@@ -241,7 +245,6 @@ void SimState::tick(double step_dt) {
     cmds_applied_last_ = cmds_.last_applied_count();
 
     update_crowd_stats();
-    evaluate_budget();
 
     ++tick_count_;
 
@@ -250,6 +253,10 @@ void SimState::tick(double step_dt) {
     // snapshot().sim_hash always refer to the same completed tick.
     uint64_t hash = compute_sim_hash(world, tick_count_);
     hash_history_.push(hash);
+
+    auto tick_end = std::chrono::high_resolution_clock::now();
+    double tick_wall_s = std::chrono::duration<double>(tick_end - tick_start).count();
+    evaluate_budget(tick_wall_s);
 }
 
 void SimState::shutdown() {
@@ -277,7 +284,7 @@ void SimState::shutdown() {
     melee_attacks_this_tick_     = 0;
     lod_config_                  = BehaviorLodConfig{};
     hash_history_.clear();
-    budget_config_ = SimBudgetConfig{};
+    // budget_config_ intentionally preserved across shutdown.
     budget_status_ = SimBudgetStatus{};
     for (auto& c : team_counts_) c = 0;
     cmds_.clear();
@@ -395,22 +402,22 @@ const SimBudgetStatus& SimState::budget_status() const {
     return budget_status_;
 }
 
-void SimState::evaluate_budget() {
+void SimState::evaluate_budget(double tick_wall_s) {
     budget_status_ = SimBudgetStatus{};
 
-    // Sum system timings and find hottest.
-    double total_s  = 0.0;
+    // tick_elapsed_s = full tick wall-clock (cull + systems + apply +
+    // stats + hash).  Hottest system uses per-system timings.
+    budget_status_.tick_elapsed_s = tick_wall_s;
+
     double hottest_s = 0.0;
     uint32_t hottest_idx = 0;
     for (uint32_t i = 0; i < system_count_; ++i) {
-        total_s += last_stats_[i].elapsed_s;
         if (last_stats_[i].elapsed_s > hottest_s) {
             hottest_s   = last_stats_[i].elapsed_s;
             hottest_idx = i;
         }
     }
 
-    budget_status_.tick_elapsed_s   = total_s;
     budget_status_.hottest_system_s = hottest_s;
     if (system_count_ > 0)
         std::memcpy(budget_status_.hottest_system,
@@ -420,8 +427,8 @@ void SimState::evaluate_budget() {
     budget_status_.melee_checks      = melee_bp_checks_;
     budget_status_.lod_t0_count      = lod_tier_counts_[0];
 
-    // Evaluate contracts.
-    if (total_s > budget_config_.max_tick_s) {
+    // Evaluate contracts (tick_wall_s = full tick, not just systems).
+    if (tick_wall_s > budget_config_.max_tick_s) {
         budget_status_.tick_over = true;
         ++budget_status_.violation_count;
     }

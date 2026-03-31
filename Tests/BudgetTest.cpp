@@ -280,6 +280,142 @@ static void test_accessor_matches_snapshot() {
           "accessor: hottest_system matches");
 }
 
+// =================================================================
+//  Budget config persists across bootstrap_crowd() re-bootstrap
+// =================================================================
+
+static void test_config_persists_across_bootstrap() {
+    de::SimState sim;
+
+    // Set a custom budget config before first bootstrap.
+    de::SimBudgetConfig custom{};
+    custom.max_targeting_scanned = 42;
+    custom.max_melee_checks      = 77;
+    custom.max_tick_s             = 0.123;
+    sim.set_budget_config(custom);
+
+    // Bootstrap crowd -- config must survive.
+    de::CrowdConfig cfg{};
+    cfg.agents_per_team = 5;
+    sim.bootstrap_crowd(cfg);
+
+    // Verify by triggering evaluation on the custom thresholds.
+    sim.tick(1.0 / 60.0);
+    auto snap = sim.snapshot();
+
+    // The targeting threshold is 42 -- with 10 agents, scanning likely
+    // exceeds that, proving the custom config was used.
+    // But the key contract is that status reflects custom thresholds.
+    // We verify via a second bootstrap.
+    de::SimState sim2;
+    sim2.set_budget_config(custom);
+    sim2.bootstrap_crowd(cfg);
+    sim2.tick(1.0 / 60.0);
+    auto snap2 = sim2.snapshot();
+
+    // Both runs used the same custom config -> same violation pattern.
+    check(snap.budget.targeting_over == snap2.budget.targeting_over,
+          "persist_bootstrap: targeting_over matches after re-bootstrap");
+    check(snap.budget.melee_over == snap2.budget.melee_over,
+          "persist_bootstrap: melee_over matches after re-bootstrap");
+
+    // Re-bootstrap again -- config must still hold.
+    sim2.bootstrap_crowd(cfg);
+    sim2.tick(1.0 / 60.0);
+    auto snap3 = sim2.snapshot();
+    check(snap2.budget.targeting_over == snap3.budget.targeting_over,
+          "persist_bootstrap: targeting_over stable across 2nd re-bootstrap");
+}
+
+// =================================================================
+//  Budget config persists across shutdown()
+// =================================================================
+
+static void test_config_persists_across_shutdown() {
+    de::SimState sim;
+
+    de::SimBudgetConfig custom{};
+    custom.max_targeting_scanned = 1;  // impossibly low
+    sim.set_budget_config(custom);
+
+    de::CrowdConfig cfg{};
+    cfg.agents_per_team = 5;
+    sim.bootstrap_crowd(cfg);
+    sim.tick(1.0 / 60.0);
+    auto snap1 = sim.snapshot();
+    check(snap1.budget.targeting_over,
+          "persist_shutdown: violation before shutdown");
+
+    // Shutdown clears world but config survives.
+    sim.shutdown();
+
+    // Re-bootstrap with same scene -- violation must reappear.
+    sim.bootstrap_crowd(cfg);
+    sim.tick(1.0 / 60.0);
+    auto snap2 = sim.snapshot();
+    check(snap2.budget.targeting_over,
+          "persist_shutdown: violation after shutdown + re-bootstrap");
+}
+
+// =================================================================
+//  Budget status resets on bootstrap (even if config persists)
+// =================================================================
+
+static void test_status_resets_on_bootstrap() {
+    de::SimState sim;
+    de::CrowdConfig cfg{};
+    cfg.agents_per_team = 5;
+    sim.bootstrap_crowd(cfg);
+
+    de::SimBudgetConfig tight{};
+    tight.max_targeting_scanned = 1;
+    sim.set_budget_config(tight);
+
+    sim.tick(1.0 / 60.0);
+    check(sim.budget_status().targeting_over,
+          "status_reset: violation before re-bootstrap");
+
+    // Re-bootstrap -- status must be clean (no stale flags).
+    sim.bootstrap_crowd(cfg);
+    const auto& status = sim.budget_status();
+    check(status.within_budget, "status_reset: within_budget after bootstrap");
+    check(status.violation_count == 0,
+          "status_reset: zero violations after bootstrap");
+    check(!status.targeting_over,
+          "status_reset: targeting_over cleared after bootstrap");
+}
+
+// =================================================================
+//  tick_elapsed_s >= sum of per-system elapsed (full tick > systems)
+// =================================================================
+
+static void test_tick_elapsed_covers_full_tick() {
+    de::CrowdConfig cfg{};
+    cfg.agents_per_team = 10;
+
+    de::SimState sim;
+    sim.bootstrap_crowd(cfg);
+    sim.tick(1.0 / 60.0);
+
+    auto snap = sim.snapshot();
+
+    // Sum per-system elapsed times.
+    double systems_sum = 0.0;
+    for (uint32_t i = 0; i < snap.system_count; ++i) {
+        systems_sum += snap.systems[i].elapsed_s;
+    }
+
+    // Full tick wall-clock must be >= sum of systems (it includes cull,
+    // command apply, stats update, hash computation).
+    check(snap.budget.tick_elapsed_s >= systems_sum,
+          "full_tick: tick_elapsed_s >= systems sum");
+    // Both must be positive.
+    check(snap.budget.tick_elapsed_s > 0.0,
+          "full_tick: tick_elapsed_s > 0");
+    check(systems_sum > 0.0,
+          "full_tick: systems_sum > 0");
+}
+
 int main() {
     test_normal_within_budget();
     test_targeting_violation();
@@ -290,6 +426,10 @@ int main() {
     test_multiple_violations();
     test_budget_resets_between_ticks();
     test_accessor_matches_snapshot();
+    test_config_persists_across_bootstrap();
+    test_config_persists_across_shutdown();
+    test_status_resets_on_bootstrap();
+    test_tick_elapsed_covers_full_tick();
 
     std::printf("\nBudgetTest: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail > 0 ? 1 : 0;

@@ -24,7 +24,9 @@ struct SystemStats {
 };
 
 // Budget thresholds for per-tick cost evaluation.
-// Purely evaluative -- no auto-throttle, no enforcement.
+// max_tick_s covers full tick wall-clock time (cull, systems, command
+// apply, stats, hash).  Purely evaluative -- no auto-throttle.
+// Persists across bootstrap()/shutdown(); only status resets.
 struct SimBudgetConfig {
     double   max_tick_s            = 0.004;   // total tick CPU (4ms @ 60Hz ~ 24% frame)
     double   max_system_s          = 0.002;   // single system ceiling
@@ -45,7 +47,7 @@ struct SimBudgetStatus {
     bool     melee_over            = false;
     bool     lod_t0_over           = false;
 
-    // Diagnostics.
+    // Diagnostics (tick_elapsed_s = full tick wall-clock).
     double   tick_elapsed_s        = 0.0;
     char     hottest_system[k_system_name_max] = {};
     double   hottest_system_s      = 0.0;
@@ -160,12 +162,17 @@ struct BattlefieldConfig {
 //   (world cleared, tick_count zeroed, pipeline re-registered).
 //   Safe to call multiple times or after tick()/shutdown().
 //
-// Tick flow:
-//   1. Clear command buffer
-//   2. Create a WorldView over the world
-//   3. Run all systems in order (they receive WorldView&, queue deferred commands)
+// Tick flow (wall-clock timed end-to-end for budget evaluation):
+//   1. Cull pre-dead agents
+//   2. Clear command buffer, create WorldView
+//   3. Run all systems in order (individually timed, receive WorldView&)
 //   4. Apply all deferred commands at once (spawns first, then destroys)
-//   5. Increment tick_count
+//   5. Update crowd stats, increment tick_count, compute sim hash
+//   6. Evaluate budget contracts (outside the measured region)
+//
+// Budget contract:
+//   SimBudgetConfig persists across bootstrap()/shutdown().
+//   Only SimBudgetStatus (per-tick result) resets on bootstrap/shutdown.
 struct SimState {
     World world;
 
@@ -229,7 +236,7 @@ private:
     void update_crowd_stats();
     void cull_pre_dead();
     void build_nav_fields();
-    void evaluate_budget();
+    void evaluate_budget(double tick_wall_s);
 };
 
 // Run a bootstrapped SimState for N ticks, collecting the hash after each.
