@@ -193,6 +193,93 @@ static void test_snapshot_coherence() {
 }
 
 // ---------------------------------------------------------------
+// Test 8: Double-buffer -- complete frame publishes to snapshot
+// ---------------------------------------------------------------
+static void test_publish_on_complete_frame() {
+    de::FrameTelemetry published = {};
+    de::FrameTelemetry wip = {};
+
+    // Simulate a complete frame (mirrors Engine::run)
+    wip = {};
+    wip.begin_frame_s = 0.001;
+    wip.fixed_update_s = 0.005;
+    wip.fixed_step_count = 2;
+    wip.presentation_update_s = 0.0002;
+    wip.render_s = 0.003;
+    wip.end_frame_s = 0.0001;
+    wip.total_frame_s = 0.010;
+
+    // Publish after complete frame
+    published = wip;
+
+    check(published.begin_frame_s == 0.001,  "publish: begin_frame_s");
+    check(published.fixed_update_s == 0.005, "publish: fixed_update_s");
+    check(published.fixed_step_count == 2,   "publish: fixed_step_count");
+    check(published.render_s == 0.003,       "publish: render_s");
+    check(published.total_frame_s == 0.010,  "publish: total_frame_s");
+}
+
+// ---------------------------------------------------------------
+// Test 9: Double-buffer -- early exit preserves last snapshot
+// ---------------------------------------------------------------
+static void test_early_exit_preserves_snapshot() {
+    de::FrameTelemetry published = {};
+    de::FrameTelemetry wip = {};
+
+    // Frame 1: complete -> publish
+    wip = {};
+    wip.begin_frame_s = 0.001;
+    wip.fixed_update_s = 0.005;
+    wip.fixed_step_count = 2;
+    wip.render_s = 0.003;
+    wip.end_frame_s = 0.0001;
+    wip.total_frame_s = 0.010;
+    published = wip;
+
+    // Frame 2: begin_frame then early exit (window close)
+    wip = {};
+    wip.begin_frame_s = 0.0008;
+    // running_ = false -> break -> NO publish
+
+    // Published snapshot must still hold frame 1 values
+    check(published.begin_frame_s == 0.001,  "preserved: begin_frame_s from frame 1");
+    check(published.fixed_update_s == 0.005, "preserved: fixed_update_s from frame 1");
+    check(published.fixed_step_count == 2,   "preserved: fixed_step_count from frame 1");
+    check(published.render_s == 0.003,       "preserved: render_s from frame 1");
+    check(published.total_frame_s == 0.010,  "preserved: total_frame_s from frame 1");
+}
+
+// ---------------------------------------------------------------
+// Test 10: Double-buffer -- wip reset does not pollute snapshot
+// ---------------------------------------------------------------
+static void test_wip_reset_does_not_pollute_snapshot() {
+    de::FrameTelemetry published = {};
+    de::FrameTelemetry wip = {};
+
+    // Frame 1: complete -> publish
+    wip = {};
+    wip.fixed_update_s = 0.007;
+    wip.fixed_step_count = 3;
+    wip.total_frame_s = 0.012;
+    published = wip;
+
+    check(published.fixed_update_s == 0.007, "before reset: fixed_update_s");
+    check(published.fixed_step_count == 3,   "before reset: fixed_step_count");
+
+    // Frame 2 starts: wip reset
+    wip = {};
+
+    // Snapshot must be untouched
+    check(published.fixed_update_s == 0.007, "after wip reset: fixed_update_s intact");
+    check(published.fixed_step_count == 3,   "after wip reset: fixed_step_count intact");
+    check(published.total_frame_s == 0.012,  "after wip reset: total_frame_s intact");
+
+    // wip is zeroed
+    check(wip.fixed_update_s == 0.0,   "wip zeroed: fixed_update_s");
+    check(wip.fixed_step_count == 0,   "wip zeroed: fixed_step_count");
+}
+
+// ---------------------------------------------------------------
 int main() {
     test_default_zeroed();
     test_reset_clears_all();
@@ -201,6 +288,9 @@ int main() {
     test_fixed_update_accumulation();
     test_frame_reset_between_frames();
     test_snapshot_coherence();
+    test_publish_on_complete_frame();
+    test_early_exit_preserves_snapshot();
+    test_wip_reset_does_not_pollute_snapshot();
 
     std::printf("\nResults: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail > 0 ? 1 : 0;

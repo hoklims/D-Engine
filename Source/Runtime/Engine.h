@@ -25,7 +25,8 @@ private:
     Clock clock_;
     FixedStep fixed_step_;
     FrameInfo frame_info_;
-    FrameTelemetry telemetry_;
+    FrameTelemetry telemetry_;        // published snapshot (last complete frame)
+    FrameTelemetry wip_telemetry_;    // work-in-progress buffer (current frame)
     bool running_ = false;
 
     void begin_frame();

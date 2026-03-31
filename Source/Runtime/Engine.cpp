@@ -25,20 +25,23 @@ bool Engine::init(const EngineConfig& cfg) {
 
     frame_info_ = {};
     telemetry_ = {};
+    wip_telemetry_ = {};
     running_ = true;
     return true;
 }
 
 void Engine::run() {
     while (running_) {
-        telemetry_ = {};
-        ScopeTimer total_timer(&telemetry_.total_frame_s);
+        wip_telemetry_ = {};
+        ScopeTimer total_timer(&wip_telemetry_.total_frame_s);
 
         begin_frame();
         if (!running_) break;
         tick_fixed_steps();
         render();
         end_frame();
+
+        telemetry_ = wip_telemetry_;
     }
 }
 
@@ -56,7 +59,7 @@ const FrameTelemetry& Engine::frame_telemetry() const {
 }
 
 void Engine::begin_frame() {
-    ScopeTimer t(&telemetry_.begin_frame_s);
+    ScopeTimer t(&wip_telemetry_.begin_frame_s);
     clock_.update();
     if (!window_.pump_messages()) {
         running_ = false;
@@ -77,14 +80,14 @@ void Engine::tick_fixed_steps() {
     for (uint32_t i = 0; i < result.steps_taken; ++i) {
         ++frame_info_.sim_tick_index;
         {
-            ScopeTimer st(&telemetry_.fixed_update_s, true);
+            ScopeTimer st(&wip_telemetry_.fixed_update_s, true);
             update_fixed(fixed_step_.step_dt());
         }
-        ++telemetry_.fixed_step_count;
+        ++wip_telemetry_.fixed_step_count;
     }
 
     {
-        ScopeTimer st(&telemetry_.presentation_update_s);
+        ScopeTimer st(&wip_telemetry_.presentation_update_s);
         update_frame(result.alpha);
     }
 }
@@ -108,13 +111,13 @@ void Engine::update_presentation(double alpha) {
 }
 
 void Engine::render() {
-    ScopeTimer t(&telemetry_.render_s);
+    ScopeTimer t(&wip_telemetry_.render_s);
     // Future: DX12 frame submission
     // Future: crowd rendering pipeline
 }
 
 void Engine::end_frame() {
-    ScopeTimer t(&telemetry_.end_frame_s);
+    ScopeTimer t(&wip_telemetry_.end_frame_s);
     // Future: replay capture
 }
 
