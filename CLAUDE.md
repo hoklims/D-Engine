@@ -1,4 +1,6 @@
-# D-Engine 2.0 -- Project Instructions
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Langue
 Reponses en francais. Code, commits, variables, noms de fichiers en anglais.
@@ -12,29 +14,111 @@ Tout le travail 2.0 se fait sur `de-engine-2.0`. Ne jamais modifier `main`.
 - Decisions : `Docs/2.0/Decision_Log.md`
 
 ## Stack
-- C++23, MSVC, CMake 3.28+
+- C++23, MSVC (Visual Studio 2022), CMake 3.28+
 - Win32 API (fenetre/platform)
 - DirectX 12 + HLSL (futur)
 - Namespace `de::`
 
 ## Build / Test / Run
+
 ```bash
+# Configure (une seule fois)
 cmake --preset default
+
+# Build Debug
 cmake --build Build --config Debug
+
+# Build Release
+cmake --build Build --config Release
+
+# Tous les tests
 ctest --test-dir Build --build-config Debug
+
+# Un seul test (build + run)
+cmake --build Build --config Debug --target EcsTest && ./Build/Tests/Debug/EcsTest.exe
+
+# Run
 ./Build/Source/Debug/DEngine.exe
 ```
 
+Tests disponibles : `FixedStepTest`, `TimelineTest`, `TelemetryTest`, `EcsTest`, `RuntimeEcsTest`, `CrowdTest`.
+
 ## Conventions code
-- `/W4 /WX /permissive-` -- zero warnings
+- `/W4 /WX /permissive-` -- zero warnings obligatoire
 - ASCII only dans les sources
 - Pas de sur-ingenierie, pas de code speculatif
-- Pas de legacy -- tout est from scratch
 - Fonctions pures par defaut, effets de bord isoles
 
 ## Commits
 Format conventionnel : `feat:` / `fix:` / `refactor:` / `docs:` / `test:` / `chore:`
 Toujours atomiques. Diff propre.
+
+---
+
+## Architecture
+
+Le moteur est organise en 3 couches : **ECS** (lib statique `DEcs`), **Runtime** (logique moteur + simulation), **Platform** (Win32).
+
+### ECS (Source/ECS/) -- lib statique `DEcs`
+
+ECS archetypal avec stockage SoA (Structure of Arrays). Aucune dependance Win32.
+
+- **EntityPool** : allocation generationnelle (index + generation) pour reutilisation safe des IDs
+- **ComponentId** : identification type-erased via adresse de fonction (pas de RTTI)
+- **Archetype** : stocke les entites ayant la meme signature de composants dans des colonnes SoA. L'ajout/retrait d'un composant migre l'entite vers un autre archetype.
+- **World** : facade ECS -- create/destroy entity, set/get/remove component, iteration via `each<Cs...>(fn)`
+- **WorldView** : vue read-only sur World passee aux systemes. Interdit les mutations structurelles (create/destroy/add/remove) pendant l'iteration -- garantit un etat coherent.
+
+### Runtime (Source/Runtime/)
+
+**Boucle principale** (Engine) : `begin_frame` -> `tick_fixed_steps` (1+ ticks fixes) -> `render` -> `end_frame`
+
+**Simulation deterministe** :
+- `Clock` : temps haute resolution via QueryPerformanceCounter
+- `FixedStep` : accumulateur a pas fixe avec clamp max_frame_delta et cap max_steps_per_frame (anti spiral-of-death)
+- `EngineConfig` : sim_rate_hz, max_frame_delta, max_steps_per_frame
+- `FrameInfo` : snapshot par frame (frame_index, sim_tick_index, steps_this_frame, alpha d'interpolation)
+- `FrameTelemetry` + `ScopeTimer` : telemetrie RAII par phase
+
+**Contrat de mutation differee** (CommandBuffer) :
+- Les systemes ne font JAMAIS de mutations structurelles directement. Ils recoivent un `WorldView` (read-only) et un `CommandBuffer`.
+- `CommandBuffer::spawn<F>(init)` / `destroy(id)` mettent en file d'attente.
+- `CommandBuffer::apply(world)` applique tout d'un coup apres tous les systemes (spawns d'abord, puis destroys).
+- Resultat deterministe independant de l'ordre d'iteration.
+
+**SimState** : orchestre World + pipeline de systemes. Chaque tick :
+1. Clear CommandBuffer
+2. Creer WorldView
+3. Executer chaque FixedSystemFn en ordre avec (WorldView, dt, CommandBuffer)
+4. CommandBuffer::apply()
+5. Incrementer tick_count
+
+**Pipeline crowd (CrowdSystems) -- 9 etapes ordonnees** :
+1. `select_targets` -- scan spatial grid, find_nearest_enemy -> Target
+2. `compute_battle_goal` -- DesiredDirection vers BattleGoal strategique
+3. `compute_desired_movement` -- si ennemi dans EngageRadius, override direction vers ennemi
+4. `apply_crowd_steering` -- Velocity = DesiredDirection * MoveSpeed
+5. `apply_separation` -- repulsion soft des allies proches (anti-stacking)
+6. `attack_targets` -- tick cooldown, emit hit events si in range
+7. `resolve_damage` -- applique tous les degats simultanement (atomique)
+8. `remove_dead` -- queue destroy pour Health <= 0
+9. `integrate_velocity` + `integrate_position` -- physique
+
+**SpatialGrid** : grille de hash 2D pour la selection de cibles. Recherche par anneau expansif (Chebyshev) avec early exit. Reconstruite a chaque tick.
+
+**Composants** :
+- Core : `Position`, `Velocity`, `Acceleration`
+- Crowd : `CrowdAgent` (tag), `Team`, `MoveSpeed`, `Target`, `DesiredDirection`, `Health`, `AttackRange`, `AttackDamage`, `AttackCooldown`, `BattleGoal`, `EngageRadius`, `Separation`
+
+### Platform (Source/Platform/)
+
+`Window` : wrapper Win32 (HWND, message pump, is_open, width/height). Ouvre une fenetre 1280x720.
+
+### Tests (Tests/)
+
+Framework custom minimal : macro `check(expr)` avec compteurs `g_pass`/`g_fail`. Pas de framework externe. Chaque test est un executable independant enregistre via `add_test()` dans CMake.
+
+---
 
 ## Yoyo -- Intelligence de code AST
 
@@ -57,7 +141,7 @@ aveugles aux changements recents.
 - Apres un step d'implementation qui a modifie >= 3 fichiers
 - Avant toute phase d'exploration yoyo si des fichiers ont change depuis
   le dernier `index`
-- En cas de doute → re-indexer. Le cout est faible (~2s).
+- En cas de doute -> re-indexer. Le cout est faible (~2s).
 
 **Quand NE PAS re-indexer** :
 - Si seuls des fichiers non-source ont change (CMakeLists, .md, .json)
@@ -96,9 +180,9 @@ Yoyo s'insere dans le protocole OCO aux moments suivants :
 - **Phase Verify** : `health` en complement du build/test
 
 ### Quand NE PAS utiliser yoyo
-- Lecture d'un fichier specifique deja connu → `Read` direct
-- Recherche d'une chaine exacte dans 1-2 fichiers → `Grep` direct
-- Operations git, build, tests → `Bash` direct
+- Lecture d'un fichier specifique deja connu -> `Read` direct
+- Recherche d'une chaine exacte dans 1-2 fichiers -> `Grep` direct
+- Operations git, build, tests -> `Bash` direct
 
 ## OCO Headless -- Protocole obligatoire
 
@@ -130,8 +214,8 @@ Declarer le winner avec justification.
 Le plan annonce doit correspondre exactement a l'execution reelle.
 
 **parallel_groups** = nombre de groupes de steps qui s'executent en parallele.
-- Si `parallel_groups: 1` → tout est sequentiel, pas de sub-agent obligatoire.
-- Si `parallel_groups: N` (N > 1) → le plan DOIT contenir des steps avec le
+- Si `parallel_groups: 1` -> tout est sequentiel, pas de sub-agent obligatoire.
+- Si `parallel_groups: N` (N > 1) -> le plan DOIT contenir des steps avec le
   meme `group` ID, et ces steps DOIVENT etre lances en parallele via l'outil
   Agent (un sub-agent par step du meme groupe).
 - Un step `mode: agent` DOIT etre execute via l'outil Agent (sub-agent).
@@ -140,20 +224,20 @@ Le plan annonce doit correspondre exactement a l'execution reelle.
   Si la parallelisation n'apporte rien, annoncer `parallel_groups: 1`.
 
 **team** = composition de sub-agents specialises.
-- Si `team: null` → tout le travail est fait par le contexte principal
+- Si `team: null` -> tout le travail est fait par le contexte principal
   (eventuellement avec des sub-agents Explore/researcher ponctuels).
-- Si `team` est definie (ex: `[implementer, verifier]`) → les roles declares
+- Si `team` est definie (ex: `[implementer, verifier]`) -> les roles declares
   DOIVENT etre remplis par des sub-agents lances via l'outil Agent avec le
   `subagent_type` correspondant :
-  - `researcher` → Agent(subagent_type=Explore ou researcher)
-  - `implementer` → Agent(subagent_type=general-purpose, mode=bypassPermissions)
-  - `verifier` → Agent(subagent_type=patch-verifier ou code-reviewer)
-  - `architect` → Agent(subagent_type=architect)
+  - `researcher` -> Agent(subagent_type=Explore ou researcher)
+  - `implementer` -> Agent(subagent_type=general-purpose, mode=bypassPermissions)
+  - `verifier` -> Agent(subagent_type=patch-verifier ou code-reviewer)
+  - `architect` -> Agent(subagent_type=architect)
 - Ne JAMAIS annoncer une team puis faire tout le travail inline.
 
 **Coherence plan/execution** :
 - Si a l'execution on realise que la parallelisation est inutile, le declarer
-  explicitement : "Plan ajuste : parallel_groups 2 → 1, raison : {motif}".
+  explicitement : "Plan ajuste : parallel_groups 2 -> 1, raison : {motif}".
 - Toute deviation du plan doit etre annoncee AVANT l'execution du step concerne.
 
 ### 3. Plan Generated
@@ -174,8 +258,8 @@ Les steps d'un meme groupe ne doivent avoir aucune dependance entre eux.
 
 ### 4. Execute
 Pour chaque groupe :
-- Si le groupe contient 1 step → executer inline ou agent selon `mode`
-- Si le groupe contient N steps → lancer N appels Agent EN PARALLELE
+- Si le groupe contient 1 step -> executer inline ou agent selon `mode`
+- Si le groupe contient N steps -> lancer N appels Agent EN PARALLELE
   (un seul message avec N tool calls Agent)
 - Pour chaque step : afficher "### S{N} : {name}" avant, "S{N} done." apres
 - Les steps agent retournent leur resultat au contexte principal qui
@@ -219,7 +303,7 @@ l'outil `Skill`. Ne JAMAIS reproduire manuellement ce qu'un skill fait.
 
 1. **`/oco-verify-fix` est NON NEGOCIABLE** apres tout changement de code.
    Ne jamais considerer un step d'implementation comme termine sans avoir
-   execute ce skill (ou, si indisponible, build → types → lint → tests
+   execute ce skill (ou, si indisponible, build -> types -> lint -> tests
    manuellement).
 
 2. **`/oco-safe-refactor` AVANT tout refactoring**. Ne jamais commencer a
@@ -237,15 +321,15 @@ l'outil `Skill`. Ne JAMAIS reproduire manuellement ce qu'un skill fait.
    code inconnue. Ne pas sauter l'exploration pour aller directement coder.
 
 6. Les skills OCO s'integrent dans le protocole OCO headless :
-   - Phase Classify → le routing determine quel skill utiliser
-   - Phase Execute → les steps de type `verify` DOIVENT appeler `/oco-verify-fix`
-   - Phase Verify Gate → `/oco-verify-fix` remplace le build/test/lint manuel
+   - Phase Classify -> le routing determine quel skill utiliser
+   - Phase Execute -> les steps de type `verify` DOIVENT appeler `/oco-verify-fix`
+   - Phase Verify Gate -> `/oco-verify-fix` remplace le build/test/lint manuel
 
 ### Fallback si skills indisponibles
 
 Si les skills `/oco-*` ne sont pas listes dans les skills disponibles :
-- `/oco-verify-fix` → build Debug + ctest + zero warnings (manuel)
-- `/oco-safe-refactor` → @refactorer puis @refactor-reviewer (sub-agents)
-- `/oco-investigate-bug` → @debugger (sub-agent)
-- `/oco-trace-stack` → @debugger (sub-agent)
-- `/oco-inspect-repo-area` → Agent(subagent_type=Explore)
+- `/oco-verify-fix` -> build Debug + ctest + zero warnings (manuel)
+- `/oco-safe-refactor` -> @refactorer puis @refactor-reviewer (sub-agents)
+- `/oco-investigate-bug` -> @debugger (sub-agent)
+- `/oco-trace-stack` -> @debugger (sub-agent)
+- `/oco-inspect-repo-area` -> Agent(subagent_type=Explore)
