@@ -101,7 +101,7 @@ void World::move_entity(EntityId id, uint32_t dst_idx) {
     // allocate row in destination
     std::size_t dst_row = dst_arch.push_entity(id);
 
-    // copy shared columns
+    // move shared columns to destination, destroy source-only columns
     for (std::size_t dc = 0; dc < dst_arch.component_infos.size(); ++dc) {
         int sc = src_arch.column_index(dst_arch.component_infos[dc].id);
         if (sc >= 0) {
@@ -115,13 +115,21 @@ void World::move_entity(EntityId id, uint32_t dst_idx) {
         // caller must placement-new them after move_entity returns
     }
 
-    // swap-remove from source -- fix swapped entity's record
+    // destroy components that exist in source but NOT in destination
+    for (std::size_t sc = 0; sc < src_arch.component_infos.size(); ++sc) {
+        if (dst_arch.column_index(src_arch.component_infos[sc].id) < 0) {
+            auto& info = src_arch.component_infos[sc];
+            info.destroy(src_arch.get_raw(sc, rec.row), 1);
+        }
+    }
+
+    // swap-erase from source (no destruction -- data already moved/destroyed)
     std::size_t last = src_arch.count - 1;
     if (rec.row != last) {
         EntityId moved = src_arch.entities[last];
         records_[moved.index].row = rec.row;
     }
-    src_arch.remove_row(rec.row);
+    src_arch.erase_row(rec.row);
 
     // update record
     rec.archetype = dst_idx;

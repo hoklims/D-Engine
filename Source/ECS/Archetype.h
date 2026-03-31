@@ -5,8 +5,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <cstdlib>
-#include <cstring>
 #include <vector>
 
 namespace de {
@@ -32,7 +30,8 @@ struct Archetype {
 
     // --- row management ---------------------------------------------------
     std::size_t push_entity(EntityId id);            // append, returns row
-    void        remove_row(std::size_t row);         // swap-remove
+    void        remove_row(std::size_t row);         // swap-remove (destroys components)
+    void        erase_row(std::size_t row);          // swap-remove (NO destruction -- for migration)
     void        reserve(std::size_t new_cap);
 
     // --- component access -------------------------------------------------

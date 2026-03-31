@@ -1,7 +1,18 @@
 #include "ECS/Archetype.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <utility>
+
+// Aligned allocation helpers -- MSVC uses _aligned_malloc/_aligned_free,
+// standard C++17 would use std::aligned_alloc but MSVC doesn't support it.
+static void* aligned_alloc_impl(std::size_t alignment, std::size_t size) {
+    return _aligned_malloc(size, alignment);
+}
+
+static void aligned_free_impl(void* ptr) {
+    _aligned_free(ptr);
+}
 
 namespace de {
 
@@ -30,12 +41,12 @@ void Archetype::reserve(std::size_t new_cap) {
     for (std::size_t c = 0; c < component_infos.size(); ++c) {
         auto& info = component_infos[c];
         auto* buf  = static_cast<uint8_t*>(
-            std::malloc(new_cap * info.size));
+            aligned_alloc_impl(info.align, new_cap * info.size));
 
         if (count > 0 && columns[c]) {
             info.move(columns[c], buf, count);
         }
-        std::free(columns[c]);
+        aligned_free_impl(columns[c]);
         columns[c] = buf;
     }
     capacity = new_cap;
@@ -78,6 +89,26 @@ void Archetype::remove_row(std::size_t row) {
     --count;
 }
 
+void Archetype::erase_row(std::size_t row) {
+    if (row >= count) return;
+
+    std::size_t last = count - 1;
+
+    // move last element's data into vacated row WITHOUT destroying row first
+    // (the caller already moved the data out via migration)
+    if (row != last) {
+        for (std::size_t c = 0; c < component_infos.size(); ++c) {
+            auto& info = component_infos[c];
+            uint8_t* base = columns[c];
+            info.move(base + last * info.size,
+                      base + row  * info.size, 1);
+        }
+        entities[row] = entities[last];
+    }
+    entities.pop_back();
+    --count;
+}
+
 // -----------------------------------------------------------------
 //  Component access
 // -----------------------------------------------------------------
@@ -99,7 +130,7 @@ void Archetype::clear() {
         if (count > 0 && columns[c]) {
             component_infos[c].destroy(columns[c], count);
         }
-        std::free(columns[c]);
+        aligned_free_impl(columns[c]);
     }
     columns.clear();
     entities.clear();

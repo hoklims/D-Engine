@@ -1,7 +1,9 @@
 #include "ECS/World.h"
 
+#include <cstdint>
 #include <cstdio>
-#include <cmath>
+#include <cstring>
+#include <string>
 
 static int g_pass = 0;
 static int g_fail = 0;
@@ -20,6 +22,31 @@ static void check(bool cond, const char* name) {
 struct Position { float x = 0.0f; float y = 0.0f; };
 struct Velocity { float dx = 0.0f; float dy = 0.0f; };
 struct Health   { int hp = 100; };
+
+// RAII component -- tracks construction/destruction to detect double-free
+static int g_raii_live = 0;
+
+struct RaiiTag {
+    std::string label;
+
+    RaiiTag() : label("default") { ++g_raii_live; }
+    explicit RaiiTag(const char* s) : label(s) { ++g_raii_live; }
+    ~RaiiTag() { --g_raii_live; }
+
+    RaiiTag(const RaiiTag& o) : label(o.label) { ++g_raii_live; }
+    RaiiTag& operator=(const RaiiTag& o) { label = o.label; return *this; }
+
+    RaiiTag(RaiiTag&& o) noexcept : label(static_cast<std::string&&>(o.label)) { ++g_raii_live; }
+    RaiiTag& operator=(RaiiTag&& o) noexcept { label = static_cast<std::string&&>(o.label); return *this; }
+};
+
+// Over-aligned component
+#pragma warning(push)
+#pragma warning(disable: 4324)  // structure was padded due to alignment specifier
+struct alignas(64) BigAligned {
+    float data[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+};
+#pragma warning(pop)
 
 // =====================================================================
 //  EntityPool tests
@@ -298,6 +325,140 @@ static void test_bulk_create_destroy() {
 }
 
 // =====================================================================
+//  Regression: double-free on migration (RAII component)
+// =====================================================================
+
+static void test_raii_migration_no_double_free() {
+    g_raii_live = 0;
+    {
+        de::World w;
+        de::EntityId e = w.create();
+        w.set(e, RaiiTag("hello"));
+        check(g_raii_live == 1, "raii: 1 live after set");
+
+        // migration: {RaiiTag} -> {RaiiTag, Position}
+        w.set(e, Position{1.0f, 2.0f});
+        check(g_raii_live == 1, "raii: still 1 live after migration");
+        check(w.get<RaiiTag>(e)->label == "hello", "raii: label preserved");
+
+        // migration: {RaiiTag, Position} -> {RaiiTag, Position, Velocity}
+        w.set(e, Velocity{3.0f, 4.0f});
+        check(g_raii_live == 1, "raii: still 1 live after 2nd migration");
+        check(w.get<RaiiTag>(e)->label == "hello", "raii: label preserved 2nd");
+    }
+    check(g_raii_live == 0, "raii: 0 live after World destroyed");
+}
+
+static void test_raii_remove_migration() {
+    g_raii_live = 0;
+    {
+        de::World w;
+        de::EntityId e = w.create();
+        w.set(e, RaiiTag("alpha"));
+        w.set(e, Position{1.0f, 2.0f});
+        check(g_raii_live == 1, "raii-rm: 1 live");
+
+        // remove Position -> migration {RaiiTag, Position} -> {RaiiTag}
+        w.remove<Position>(e);
+        check(g_raii_live == 1, "raii-rm: still 1 after remove Position");
+        check(w.get<RaiiTag>(e)->label == "alpha", "raii-rm: label intact");
+
+        // remove RaiiTag -> migration {RaiiTag} -> {}
+        w.remove<RaiiTag>(e);
+        check(g_raii_live == 0, "raii-rm: 0 live after remove RaiiTag");
+    }
+    check(g_raii_live == 0, "raii-rm: 0 live after World destroyed");
+}
+
+static void test_raii_destroy_entity() {
+    g_raii_live = 0;
+    {
+        de::World w;
+        de::EntityId a = w.create();
+        de::EntityId b = w.create();
+        w.set(a, RaiiTag("aa"));
+        w.set(b, RaiiTag("bb"));
+        check(g_raii_live == 2, "raii-destroy: 2 live");
+
+        w.destroy(a);
+        check(g_raii_live == 1, "raii-destroy: 1 live after destroy a");
+        check(w.get<RaiiTag>(b)->label == "bb", "raii-destroy: b intact");
+    }
+    check(g_raii_live == 0, "raii-destroy: 0 live after World destroyed");
+}
+
+static void test_raii_multiple_migrations() {
+    g_raii_live = 0;
+    {
+        de::World w;
+        de::EntityId e = w.create();
+        w.set(e, RaiiTag("bounce"));
+
+        // add then remove repeatedly to trigger many migrations
+        for (int i = 0; i < 10; ++i) {
+            w.set(e, Position{static_cast<float>(i), 0.0f});
+            w.remove<Position>(e);
+        }
+        check(g_raii_live == 1, "raii-multi: 1 live after 10 add/remove cycles");
+        check(w.get<RaiiTag>(e)->label == "bounce", "raii-multi: label intact");
+    }
+    check(g_raii_live == 0, "raii-multi: 0 live after World destroyed");
+}
+
+// =====================================================================
+//  Regression: over-aligned component storage
+// =====================================================================
+
+static void test_over_aligned_component() {
+    de::World w;
+    de::EntityId e = w.create();
+    w.set(e, BigAligned{{1.0f, 2.0f, 3.0f, 4.0f}});
+
+    BigAligned* p = w.get<BigAligned>(e);
+    check(p != nullptr, "aligned: get not null");
+    check(reinterpret_cast<std::uintptr_t>(p) % 64 == 0,
+          "aligned: pointer is 64-byte aligned");
+    check(p->data[0] == 1.0f && p->data[3] == 4.0f,
+          "aligned: data correct");
+}
+
+static void test_over_aligned_migration() {
+    de::World w;
+    de::EntityId e = w.create();
+    w.set(e, BigAligned{{10.0f, 20.0f, 30.0f, 40.0f}});
+
+    // migration: {BigAligned} -> {BigAligned, Position}
+    w.set(e, Position{5.0f, 6.0f});
+
+    BigAligned* ba = w.get<BigAligned>(e);
+    check(ba != nullptr, "aligned-mig: get not null");
+    check(reinterpret_cast<std::uintptr_t>(ba) % 64 == 0,
+          "aligned-mig: still 64-byte aligned after migration");
+    check(ba->data[0] == 10.0f && ba->data[3] == 40.0f,
+          "aligned-mig: data preserved");
+    check(w.get<Position>(e)->x == 5.0f, "aligned-mig: Position correct");
+}
+
+static void test_over_aligned_multiple_entities() {
+    de::World w;
+    de::EntityId ids[8];
+    for (int i = 0; i < 8; ++i) {
+        ids[i] = w.create();
+        w.set(ids[i], BigAligned{{static_cast<float>(i), 0.0f, 0.0f, 0.0f}});
+    }
+
+    bool all_aligned = true;
+    bool all_correct = true;
+    for (int i = 0; i < 8; ++i) {
+        BigAligned* p = w.get<BigAligned>(ids[i]);
+        if (reinterpret_cast<std::uintptr_t>(p) % 64 != 0) all_aligned = false;
+        if (p->data[0] != static_cast<float>(i)) all_correct = false;
+    }
+    check(all_aligned, "aligned-multi: all 8 pointers 64-byte aligned");
+    check(all_correct, "aligned-multi: all 8 data values correct");
+}
+
+// =====================================================================
 //  main
 // =====================================================================
 
@@ -332,6 +493,17 @@ int main() {
     // Stress / edge cases
     test_destroy_middle_entity();
     test_bulk_create_destroy();
+
+    // Regression: RAII double-free
+    test_raii_migration_no_double_free();
+    test_raii_remove_migration();
+    test_raii_destroy_entity();
+    test_raii_multiple_migrations();
+
+    // Regression: over-aligned storage
+    test_over_aligned_component();
+    test_over_aligned_migration();
+    test_over_aligned_multiple_entities();
 
     std::printf("\nEcsTest results: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail > 0 ? 1 : 0;

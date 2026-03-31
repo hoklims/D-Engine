@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <tuple>
 #include <vector>
 
@@ -90,9 +91,10 @@ void World::set(EntityId id, T value) {
     new_infos.push_back(make_component_info<T>());
 
     // sort by ComponentId to keep canonical order
+    // std::less<> provides a guaranteed total order on pointers (C++14 [comparisons])
     std::sort(new_infos.begin(), new_infos.end(),
               [](const ComponentInfo& a, const ComponentInfo& b) {
-                  return a.id < b.id;
+                  return std::less<const void*>{}(a.id, b.id);
               });
 
     uint32_t dst = find_or_create_archetype(new_infos);
