@@ -5,6 +5,7 @@
 
 #include <cfloat>
 #include <cmath>
+#include <unordered_set>
 #include <vector>
 
 namespace de {
@@ -45,6 +46,13 @@ static uint32_t s_melee_bp_checks        = 0;
 static uint32_t s_melee_pairs_count      = 0;
 static uint32_t s_melee_attacks          = 0;
 
+// Broadphase validation set: O(1) lookup for (attacker, defender) pairs.
+static std::unordered_set<uint64_t> s_melee_valid_set;
+
+static uint64_t make_pair_key(uint32_t a_idx, uint32_t d_idx) {
+    return (static_cast<uint64_t>(a_idx) << 32) | static_cast<uint32_t>(d_idx);
+}
+
 uint32_t crowd_attacks_this_tick()            { return s_attacks_this_tick; }
 uint32_t crowd_deaths_queued_this_tick()      { return s_deaths_this_tick; }
 uint32_t crowd_candidates_scanned_this_tick() { return s_candidates_scanned; }
@@ -83,6 +91,7 @@ void     reset_crowd_tick_counters() {
     s_melee_attacks      = 0;
     s_hit_buffer.clear();
     s_melee_pairs.clear();
+    s_melee_valid_set.clear();
 }
 
 // -----------------------------------------------------------------------
@@ -332,6 +341,7 @@ uint32_t apply_crowd_steering(WorldView& view, float /*dt*/,
 uint32_t gather_melee_candidates(WorldView& view, float /*dt*/,
                                  CommandBuffer& /*cmds*/) {
     s_melee_pairs.clear();
+    s_melee_valid_set.clear();
     s_melee_bp_checks   = 0;
     s_melee_pairs_count = 0;
 
@@ -346,6 +356,8 @@ uint32_t gather_melee_candidates(WorldView& view, float /*dt*/,
                 [&](const SpatialGrid::Entry& e, float /*d2*/) {
                     if (e.team == my_team.id) return;  // ally, skip
                     s_melee_pairs.push_back({self, e.id});
+                    s_melee_valid_set.insert(
+                        make_pair_key(self.index, e.id.index));
                 });
         });
 
@@ -356,43 +368,44 @@ uint32_t gather_melee_candidates(WorldView& view, float /*dt*/,
 // -----------------------------------------------------------------------
 //  attack_targets
 // -----------------------------------------------------------------------
-// Tick all cooldowns.  Then iterate broadphase pairs: when cooldown is
-// ready, emit a HitEvent.  Does NOT modify Health -- that is
-// resolve_damage's job.
+// Single pass over agents (not pairs).  For each agent:
+//   1) Tick cooldown (unconditional, deterministic).
+//   2) If cooldown ready AND Target.entity is in the broadphase set,
+//      emit exactly one HitEvent toward Target.entity.
 //
-// Two passes:
-//   1) Tick cooldowns for every agent (deterministic, independent of
-//      broadphase result).
-//   2) Walk melee pairs and emit hits for ready attackers.
+// Guarantees:
+//   - At most one hit per attacker per tick (iterate agents, not pairs).
+//   - Attack target is always Target.entity (set by select_targets),
+//     never an arbitrary broadphase neighbor.
+//   - interval <= 0 cannot cause multi-hit (one iteration per agent).
+//   - Does NOT modify Health -- that is resolve_damage's job.
 
 uint32_t attack_targets(WorldView& view, float dt, CommandBuffer& /*cmds*/) {
     s_attacks_this_tick = 0;
     s_melee_attacks     = 0;
     s_hit_buffer.clear();
 
-    // Pass 1: tick all cooldowns unconditionally.
     uint32_t count = 0;
-    view.each<CrowdAgent, AttackCooldown>(
-        [&](EntityId, CrowdAgent&, AttackCooldown& cd) {
+    view.each<CrowdAgent, Target, AttackCooldown, AttackDamage>(
+        [&](EntityId self, CrowdAgent&, Target& tgt,
+            AttackCooldown& cd, AttackDamage& dmg) {
             ++count;
             cd.remaining -= dt;
+
+            if (!tgt.has_target || !view.alive(tgt.entity)) return;
+            if (cd.remaining > 0.0f) return;
+
+            // Broadphase gate: Target.entity must be confirmed in melee
+            // range by gather_melee_candidates.
+            auto key = make_pair_key(self.index, tgt.entity.index);
+            if (s_melee_valid_set.find(key) == s_melee_valid_set.end())
+                return;
+
+            s_hit_buffer.push_back({tgt.entity, dmg.damage});
+            cd.remaining = cd.interval;
+            ++s_attacks_this_tick;
+            ++s_melee_attacks;
         });
-
-    // Pass 2: emit hits for broadphase-validated pairs.
-    for (const auto& pair : s_melee_pairs) {
-        if (!view.alive(pair.attacker)) continue;
-        if (!view.alive(pair.defender)) continue;
-
-        auto* cd  = view.get<AttackCooldown>(pair.attacker);
-        auto* dmg = view.get<AttackDamage>(pair.attacker);
-        if (!cd || !dmg) continue;
-        if (cd->remaining > 0.0f) continue;
-
-        s_hit_buffer.push_back({pair.defender, dmg->damage});
-        cd->remaining = cd->interval;
-        ++s_attacks_this_tick;
-        ++s_melee_attacks;
-    }
     return count;
 }
 

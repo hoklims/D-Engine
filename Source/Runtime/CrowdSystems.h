@@ -17,19 +17,30 @@ namespace de {
 //   (direct World::destroy, not CommandBuffer).  They never act.
 //
 // Pipeline order:
-//   SelectTargets > ComputeBattleGoal > ComputeDesiredMove >
-//   ApplyCrowdSteer > ApplySeparation >
-//   AttackTargets > ResolveDamage > RemoveDead >
+//   SelectTargets > ClassifyLod > ComputeBattleGoal >
+//   ComputeDesiredMove > ApplyCrowdSteer > ApplySeparation >
+//   MeleeBroadphase > AttackTargets > ResolveDamage > RemoveDead >
 //   IntegrateVelocity > IntegratePosition
 //
 // ComputeBattleGoal sets DesiredDirection toward the strategic rally
 // point.  ComputeDesiredMove overrides it with local pursuit when the
 // nearest enemy is within EngageRadius.
 //
-// AttackTargets produces hit events into a buffer without modifying HP.
-// ResolveDamage consumes the buffer and applies all damage at once.
-// This guarantees that the result is independent of iteration order:
-// every agent alive at the start of the tick gets to act, and all
+// Melee combat contract:
+//   MeleeBroadphase (gather_melee_candidates) queries the spatial grid
+//   for enemies within AttackRange and builds a validated pair set.
+//   AttackTargets iterates agents (not pairs), ticks cooldowns, and
+//   emits at most ONE HitEvent per agent toward Target.entity -- only
+//   if that specific target is confirmed by the broadphase set.
+//
+//   Guarantees:
+//   - Attack target is always Target.entity (coherent with select_targets).
+//   - At most one hit per attacker per tick regardless of interval value.
+//   - interval <= 0 does not cause multi-hit.
+//   - Result is independent of iteration order.
+//
+// ResolveDamage consumes the hit buffer and applies all damage at once.
+// Every agent alive at the start of the tick gets to act, and all
 // damage is applied simultaneously before death checks.
 //
 // Deaths caused during the tick (ResolveDamage -> RemoveDead) are
@@ -70,13 +81,14 @@ uint32_t compute_desired_movement(WorldView& view, float dt, CommandBuffer& cmds
 uint32_t apply_crowd_steering(WorldView& view, float dt, CommandBuffer& cmds);
 
 // Melee broadphase: for each crowd agent, query the spatial grid for
-// enemies within AttackRange.  Builds a buffer of (attacker, defender)
-// pairs consumed by attack_targets.  Reduces attack_targets to a simple
-// cooldown + emit pass over pre-filtered pairs.
+// enemies within AttackRange.  Builds a pair buffer (telemetry) and a
+// validation set (O(1) lookup).  attack_targets consumes the set to
+// gate hits -- only Target.entity is eligible, not arbitrary neighbors.
 uint32_t gather_melee_candidates(WorldView& view, float dt, CommandBuffer& cmds);
 
-// Tick cooldowns, produce hit events for broadphase-validated pairs.
-// Does NOT modify Health directly -- damage is deferred to ResolveDamage.
+// Single-pass over agents: tick cooldown, then emit at most one
+// HitEvent toward Target.entity if broadphase confirms it is in range.
+// Does NOT modify Health -- damage is deferred to ResolveDamage.
 uint32_t attack_targets(WorldView& view, float dt, CommandBuffer& cmds);
 
 // Consume hit events and apply accumulated damage to Health components.

@@ -365,6 +365,241 @@ static void test_existing_crowd_no_regression() {
 }
 
 // =================================================================
+//  Attacker with 2 enemies in range attacks Target.entity, not a
+//  random broadphase neighbor.
+// =================================================================
+
+static void test_attack_respects_target() {
+    de::World world;
+    de::CommandBuffer cmds;
+
+    // Attacker (team 0) at origin, targeting enemy_far.
+    de::EntityId atk = world.create();
+    world.set(atk, de::CrowdAgent{});
+    world.set(atk, de::Team{0});
+    world.set(atk, de::Position{0.0f, 0.0f});
+    world.set(atk, de::Velocity{});
+    world.set(atk, de::MoveSpeed{3.0f});
+    world.set(atk, de::DesiredDirection{});
+    world.set(atk, de::Health{100.0f, 100.0f});
+    world.set(atk, de::AttackRange{5.0f});
+    world.set(atk, de::AttackDamage{20.0f});
+    world.set(atk, de::AttackCooldown{0.0f, 1.0f});
+    world.set(atk, de::BattleGoal{10.0f, 0.0f});
+    world.set(atk, de::EngageRadius{15.0f});
+    world.set(atk, de::Separation{0.8f, 5.0f});
+    world.set(atk, de::BehaviorLod{});
+
+    // Enemy close (team 1) at (1, 0) -- in range.
+    de::EntityId enemy_close = world.create();
+    world.set(enemy_close, de::CrowdAgent{});
+    world.set(enemy_close, de::Team{1});
+    world.set(enemy_close, de::Position{1.0f, 0.0f});
+    world.set(enemy_close, de::Velocity{});
+    world.set(enemy_close, de::MoveSpeed{3.0f});
+    world.set(enemy_close, de::Target{});
+    world.set(enemy_close, de::DesiredDirection{});
+    world.set(enemy_close, de::Health{100.0f, 100.0f});
+    world.set(enemy_close, de::AttackRange{5.0f});
+    world.set(enemy_close, de::AttackDamage{10.0f});
+    world.set(enemy_close, de::AttackCooldown{0.0f, 1.0f});
+    world.set(enemy_close, de::BattleGoal{-10.0f, 0.0f});
+    world.set(enemy_close, de::EngageRadius{15.0f});
+    world.set(enemy_close, de::Separation{0.8f, 5.0f});
+    world.set(enemy_close, de::BehaviorLod{});
+
+    // Enemy far (team 1) at (4, 0) -- also in range (< 5).
+    de::EntityId enemy_far = world.create();
+    world.set(enemy_far, de::CrowdAgent{});
+    world.set(enemy_far, de::Team{1});
+    world.set(enemy_far, de::Position{4.0f, 0.0f});
+    world.set(enemy_far, de::Velocity{});
+    world.set(enemy_far, de::MoveSpeed{3.0f});
+    world.set(enemy_far, de::Target{});
+    world.set(enemy_far, de::DesiredDirection{});
+    world.set(enemy_far, de::Health{100.0f, 100.0f});
+    world.set(enemy_far, de::AttackRange{5.0f});
+    world.set(enemy_far, de::AttackDamage{10.0f});
+    world.set(enemy_far, de::AttackCooldown{0.0f, 1.0f});
+    world.set(enemy_far, de::BattleGoal{-10.0f, 0.0f});
+    world.set(enemy_far, de::EngageRadius{15.0f});
+    world.set(enemy_far, de::Separation{0.8f, 5.0f});
+    world.set(enemy_far, de::BehaviorLod{});
+
+    // Manually set attacker's target to enemy_far (NOT the closest).
+    world.set(atk, de::Target{enemy_far, true});
+
+    de::reset_crowd_tick_counters();
+    de::set_crowd_tick_count(0);
+    de::WorldView view(world);
+
+    // Build grid + broadphase (both enemies in range).
+    de::select_targets(view, 0.016f, cmds);
+
+    // select_targets would normally pick nearest enemy, overriding our
+    // manual target.  Force target back to enemy_far to test the contract.
+    auto* tgt = view.get<de::Target>(atk);
+    tgt->entity     = enemy_far;
+    tgt->has_target = true;
+
+    de::gather_melee_candidates(view, 0.016f, cmds);
+
+    // Both enemies should be broadphase candidates.
+    check(de::melee_pairs_this_tick() >= 2,
+          "respects_target: broadphase found both enemies");
+
+    de::attack_targets(view, 0.016f, cmds);
+    de::resolve_damage(view, 0.016f, cmds);
+
+    // Only enemy_far (the actual Target) should have taken damage.
+    auto* hp_close = view.get<de::Health>(enemy_close);
+    auto* hp_far   = view.get<de::Health>(enemy_far);
+    check(hp_close && hp_close->current == 100.0f,
+          "respects_target: enemy_close NOT hit (not the target)");
+    check(hp_far && hp_far->current == 80.0f,
+          "respects_target: enemy_far hit for 20 damage (is the target)");
+}
+
+// =================================================================
+//  interval == 0 does not cause multi-hit in the same tick
+// =================================================================
+
+static void test_zero_interval_single_hit() {
+    de::World world;
+    de::CommandBuffer cmds;
+
+    // Attacker with interval = 0.
+    de::EntityId atk = world.create();
+    world.set(atk, de::CrowdAgent{});
+    world.set(atk, de::Team{0});
+    world.set(atk, de::Position{0.0f, 0.0f});
+    world.set(atk, de::Velocity{});
+    world.set(atk, de::MoveSpeed{3.0f});
+    world.set(atk, de::Target{});
+    world.set(atk, de::DesiredDirection{});
+    world.set(atk, de::Health{100.0f, 100.0f});
+    world.set(atk, de::AttackRange{5.0f});
+    world.set(atk, de::AttackDamage{30.0f});
+    world.set(atk, de::AttackCooldown{0.0f, 0.0f});  // interval = 0!
+    world.set(atk, de::BattleGoal{10.0f, 0.0f});
+    world.set(atk, de::EngageRadius{15.0f});
+    world.set(atk, de::Separation{0.8f, 5.0f});
+    world.set(atk, de::BehaviorLod{});
+
+    // Enemy in range.
+    de::EntityId enemy = world.create();
+    world.set(enemy, de::CrowdAgent{});
+    world.set(enemy, de::Team{1});
+    world.set(enemy, de::Position{1.0f, 0.0f});
+    world.set(enemy, de::Velocity{});
+    world.set(enemy, de::MoveSpeed{3.0f});
+    world.set(enemy, de::Target{});
+    world.set(enemy, de::DesiredDirection{});
+    world.set(enemy, de::Health{100.0f, 100.0f});
+    world.set(enemy, de::AttackRange{5.0f});
+    world.set(enemy, de::AttackDamage{10.0f});
+    world.set(enemy, de::AttackCooldown{0.0f, 1.0f});
+    world.set(enemy, de::BattleGoal{-10.0f, 0.0f});
+    world.set(enemy, de::EngageRadius{15.0f});
+    world.set(enemy, de::Separation{0.8f, 5.0f});
+    world.set(enemy, de::BehaviorLod{});
+
+    de::reset_crowd_tick_counters();
+    de::set_crowd_tick_count(0);
+    de::WorldView view(world);
+
+    de::select_targets(view, 0.016f, cmds);
+    de::gather_melee_candidates(view, 0.016f, cmds);
+    de::attack_targets(view, 0.016f, cmds);
+    de::resolve_damage(view, 0.016f, cmds);
+
+    // Attacker should have emitted exactly 1 hit despite interval == 0.
+    // (enemy also attacks back -> 2 total, but attacker contributes 1).
+    auto* hp_enemy = view.get<de::Health>(enemy);
+    check(hp_enemy && hp_enemy->current == 70.0f,
+          "zero_interval: enemy took exactly 30 damage (1 hit, not multi)");
+
+    // Run a second tick -- attacker should hit again (interval=0, ready
+    // immediately) but still only once.
+    de::reset_crowd_tick_counters();
+    de::set_crowd_tick_count(1);
+    de::select_targets(view, 0.016f, cmds);
+    de::gather_melee_candidates(view, 0.016f, cmds);
+    de::attack_targets(view, 0.016f, cmds);
+    de::resolve_damage(view, 0.016f, cmds);
+
+    auto* hp2 = view.get<de::Health>(enemy);
+    check(hp2 && hp2->current == 40.0f,
+          "zero_interval: enemy took exactly 30 more on second tick");
+}
+
+// =================================================================
+//  Simultaneous contract preserved with target-gated broadphase:
+//  both agents with lethal damage still both attack.
+// =================================================================
+
+static void test_simultaneous_with_target_gate() {
+    de::World world;
+    de::CommandBuffer cmds;
+
+    // A (team 0) and B (team 1) at distance 1, both deal lethal damage.
+    de::EntityId a = world.create();
+    world.set(a, de::CrowdAgent{});
+    world.set(a, de::Team{0});
+    world.set(a, de::Position{0.0f, 0.0f});
+    world.set(a, de::Velocity{});
+    world.set(a, de::MoveSpeed{3.0f});
+    world.set(a, de::Target{});
+    world.set(a, de::DesiredDirection{});
+    world.set(a, de::Health{10.0f, 10.0f});
+    world.set(a, de::AttackRange{3.0f});
+    world.set(a, de::AttackDamage{999.0f});
+    world.set(a, de::AttackCooldown{0.0f, 1.0f});
+    world.set(a, de::BattleGoal{10.0f, 0.0f});
+    world.set(a, de::EngageRadius{15.0f});
+    world.set(a, de::Separation{0.8f, 5.0f});
+    world.set(a, de::BehaviorLod{});
+
+    de::EntityId b = world.create();
+    world.set(b, de::CrowdAgent{});
+    world.set(b, de::Team{1});
+    world.set(b, de::Position{1.0f, 0.0f});
+    world.set(b, de::Velocity{});
+    world.set(b, de::MoveSpeed{3.0f});
+    world.set(b, de::Target{});
+    world.set(b, de::DesiredDirection{});
+    world.set(b, de::Health{10.0f, 10.0f});
+    world.set(b, de::AttackRange{3.0f});
+    world.set(b, de::AttackDamage{999.0f});
+    world.set(b, de::AttackCooldown{0.0f, 1.0f});
+    world.set(b, de::BattleGoal{-10.0f, 0.0f});
+    world.set(b, de::EngageRadius{15.0f});
+    world.set(b, de::Separation{0.8f, 5.0f});
+    world.set(b, de::BehaviorLod{});
+
+    de::reset_crowd_tick_counters();
+    de::set_crowd_tick_count(0);
+    de::WorldView view(world);
+
+    de::select_targets(view, 0.016f, cmds);
+    de::gather_melee_candidates(view, 0.016f, cmds);
+    de::attack_targets(view, 0.016f, cmds);
+
+    // Both must have attacked (2 hits total).
+    check(de::melee_attacks_this_tick() == 2,
+          "simultaneous_gate: both agents attacked before resolve");
+
+    de::resolve_damage(view, 0.016f, cmds);
+
+    auto* hp_a = view.get<de::Health>(a);
+    auto* hp_b = view.get<de::Health>(b);
+    check(hp_a && hp_a->current <= 0.0f,
+          "simultaneous_gate: a is dead after simultaneous resolve");
+    check(hp_b && hp_b->current <= 0.0f,
+          "simultaneous_gate: b is dead after simultaneous resolve");
+}
+
+// =================================================================
 
 int main() {
     test_sparse_melee();
@@ -375,6 +610,9 @@ int main() {
     test_pipeline_integration();
     test_melee_telemetry_coherent();
     test_existing_crowd_no_regression();
+    test_attack_respects_target();
+    test_zero_interval_single_hit();
+    test_simultaneous_with_target_gate();
 
     std::printf("\nMeleeTest: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail > 0 ? 1 : 0;
