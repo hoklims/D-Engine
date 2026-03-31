@@ -4,6 +4,7 @@
 #include "Runtime/Clock.h"
 #include "Runtime/EngineConfig.h"
 #include "Runtime/FixedStep.h"
+#include "Runtime/FrameInfo.h"
 
 namespace de {
 
@@ -13,11 +14,14 @@ struct Engine {
     void run();
     void shutdown();
 
+    const FrameInfo& frame_info() const;
+
 private:
     EngineConfig config_;
     Window window_;
     Clock clock_;
     FixedStep fixed_step_;
+    FrameInfo frame_info_;
     bool running_ = false;
 
     void begin_frame();

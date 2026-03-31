@@ -98,6 +98,10 @@ build_log.txt
 # Optional editor caches
 .vscode/
 
+# Claude Code local config
+.claude/
+.mcp.json
+
 # Researches data
 Researches/
 

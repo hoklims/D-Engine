@@ -26,13 +26,15 @@ FixedStepResult FixedStep::consume(double frame_delta) {
         ++steps;
     }
 
+    bool cap_hit = (steps == max_steps_ && accumulator_ >= step_dt_);
+
     // If we hit the cap, drain leftover to prevent unbounded growth.
-    if (steps == max_steps_ && accumulator_ >= step_dt_) {
+    if (cap_hit) {
         accumulator_ = 0.0;
     }
 
     double alpha = accumulator_ / step_dt_;
-    return {steps, alpha};
+    return {steps, alpha, clamped, cap_hit};
 }
 
 double FixedStep::step_dt() const { return step_dt_; }

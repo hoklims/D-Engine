@@ -7,6 +7,8 @@ namespace de {
 struct FixedStepResult {
     uint32_t steps_taken;
     double alpha;
+    double clamped_delta;
+    bool step_cap_hit;
 };
 
 struct FixedStep {

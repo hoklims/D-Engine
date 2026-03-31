@@ -3,6 +3,7 @@ add_executable(DEngine WIN32
     Runtime/Engine.h
     Runtime/Engine.cpp
     Runtime/EngineConfig.h
+    Runtime/FrameInfo.h
     Runtime/Clock.h
     Runtime/Clock.cpp
     Runtime/FixedStep.h

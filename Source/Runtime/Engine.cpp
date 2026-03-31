@@ -42,17 +42,30 @@ void Engine::shutdown() {
     window_.destroy();
 }
 
+const FrameInfo& Engine::frame_info() const {
+    return frame_info_;
+}
+
 void Engine::begin_frame() {
     clock_.update();
     if (!window_.pump_messages()) {
         running_ = false;
     }
+
+    ++frame_info_.frame_index;
+    frame_info_.raw_frame_delta = clock_.delta_seconds();
 }
 
 void Engine::tick_fixed_steps() {
-    FixedStepResult result = fixed_step_.consume(clock_.delta_seconds());
+    FixedStepResult result = fixed_step_.consume(frame_info_.raw_frame_delta);
+
+    frame_info_.clamped_frame_delta = result.clamped_delta;
+    frame_info_.steps_this_frame = result.steps_taken;
+    frame_info_.step_cap_hit = result.step_cap_hit;
+    frame_info_.presentation_alpha = result.alpha;
 
     for (uint32_t i = 0; i < result.steps_taken; ++i) {
+        ++frame_info_.sim_tick_index;
         update_fixed(fixed_step_.step_dt());
     }
 
