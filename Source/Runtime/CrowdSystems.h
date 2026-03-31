@@ -39,8 +39,14 @@ uint32_t select_targets(WorldView& view, float dt, CommandBuffer& cmds);
 
 // Set desired direction toward BattleGoal (strategic layer).
 // ComputeDesiredMove may override this with local pursuit.
-// If a BattlefieldGrid is installed, direction is sampled from the
-// flow field instead of pointing straight at the goal.
+//
+// Navigation contract:
+//   If per-team BattlefieldGrids are installed, direction is sampled
+//   from the flow field.  When sample_flow() fails (agent out of grid,
+//   blocked cell, unreachable cell), the agent receives a ZERO direction
+//   instead of falling back to direct line-of-sight.  This guarantees
+//   that obstacles are never silently bypassed.
+//   When no grid is installed, direct line toward BattleGoal is used.
 uint32_t compute_battle_goal(WorldView& view, float dt, CommandBuffer& cmds);
 
 // Install / remove per-team battlefield navigation grids.
@@ -78,6 +84,7 @@ uint32_t crowd_candidates_scanned_this_tick();
 uint32_t crowd_separation_pairs_this_tick();
 uint32_t crowd_agents_engaged_this_tick();
 uint32_t crowd_nav_queries_this_tick();
+uint32_t crowd_nav_failures_this_tick();
 void     reset_crowd_tick_counters();
 
 }  // namespace de

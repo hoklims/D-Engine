@@ -159,12 +159,12 @@ static void test_nav_regression_no_obstacle() {
 }
 
 // =================================================================
-//  Wall scene: agents don't push into wall, drift toward gap
+//  Wall scene: agents avoid the wall and no agent sits in a blocked cell
 // =================================================================
 
 static void test_nav_wall_agents_avoid() {
     // Grid: 60 wide, 40 tall, cell=1, origin=(-30, -20).
-    // Vertical wall at column x_cell=30 (world x=0), gap at row y_cell=20 (world y=0).
+    // Vertical wall at column x_cell=30 (world x=0..1), gap at row y_cell=20 (world y=0..1).
     de::ObstacleDef obstacles[39];
     int count = 0;
     for (int y = 0; y < 40; ++y) {
@@ -178,8 +178,9 @@ static void test_nav_wall_agents_avoid() {
     bcfg.crowd.team_spacing    = 20.0f;
     bcfg.crowd.agent_spread    = 1.0f;
     bcfg.crowd.move_speed      = 3.0f;
-    bcfg.crowd.engage_radius   = 5.0f;   // small so nav dominates
+    bcfg.crowd.engage_radius   = 3.0f;   // small so nav dominates
     bcfg.crowd.attack_range    = 1.5f;
+    bcfg.crowd.health          = 10000.0f;  // prevent deaths
     bcfg.grid_width            = 60;
     bcfg.grid_height           = 40;
     bcfg.grid_cell             = 1.0f;
@@ -191,52 +192,45 @@ static void test_nav_wall_agents_avoid() {
     de::SimState sim;
     sim.bootstrap_battlefield(bcfg);
 
-    // Team 0 starts at x=-20, goals at x=+20.
-    // Team 1 starts at x=+20, goals at x=-20.
-    // Wall at x=0 with gap at y=0.
-
-    // Run several ticks.  Agents should drift toward y=0 (gap) rather
-    // than pile up against the wall at x=0.
+    // Run enough ticks for agents to reach the wall area.
     for (int i = 0; i < 10; ++i) {
         sim.tick(1.0);
     }
 
-    // Check that team 0 agents have not crossed x=0 (wall blocks them)
-    // but have moved in the y direction toward the gap (y=0).
-    bool drifted_toward_gap = false;
-    sim.world.each<de::CrowdAgent, de::Team, de::Position>(
-        [&](de::EntityId, de::CrowdAgent&, de::Team& t, de::Position& p) {
-            if (t.id == 0) {
-                // Agent started at y = 0,1,2,3,4 (agent_spread=1).
-                // With flow field, agents above gap (y>0) should drift
-                // downward.  We just check that at least one moved.
-                // Actually agents start at y = i*spread = 0,1,2,3,4.
-                // The gap is at y=0.  So agents at y>0 should drift toward y=0.
-                // This is a soft check.
-                (void)p;
-            }
-        });
-
-    // Stronger check: after 10 ticks at speed 3, team 0 agents that
-    // started at x=-20 should have advanced significantly toward x=0,
-    // and some should be near or past the gap.
+    // 1. Agents advanced from start.
     float max_x_team0 = -1e6f;
     sim.world.each<de::CrowdAgent, de::Team, de::Position>(
         [&](de::EntityId, de::CrowdAgent&, de::Team& t, de::Position& p) {
             if (t.id == 0 && p.x > max_x_team0) max_x_team0 = p.x;
         });
-
     check(max_x_team0 > -20.0f,
           "nav_wall: team 0 agents advanced from start");
 
-    // The flow field should have been queried.
+    // 2. No agent occupies a blocked cell (the wall) except via the gap.
+    //    The wall is at cell column 30 (world x in [0, 1]).
+    //    The gap is at cell row 20 (world y in [0, 1]).
+    bool none_in_wall = true;
+    sim.world.each<de::CrowdAgent, de::Position>(
+        [&](de::EntityId, de::CrowdAgent&, de::Position& p) {
+            int cx, cy;
+            de::BattlefieldGrid probe;
+            probe.init(bcfg.grid_width, bcfg.grid_height,
+                       bcfg.grid_cell, bcfg.grid_ox, bcfg.grid_oy);
+            probe.world_to_cell(p.x, p.y, cx, cy);
+            // Check if this cell is a blocked wall cell (col 30, row != 20).
+            if (cx == 30 && cy != 20) {
+                none_in_wall = false;
+            }
+        });
+    check(none_in_wall,
+          "nav_wall: no agent occupies a blocked wall cell");
+
+    // 3. Telemetry coherent.
     de::SimSnapshot snap = sim.snapshot();
     check(snap.nav_queries_this_tick > 0,
           "nav_wall: navigation queries occurred");
     check(snap.nav_blocked_cells == 39,
           "nav_wall: 39 blocked cells in snapshot");
-    drifted_toward_gap = true;
-    check(drifted_toward_gap, "nav_wall: agents drifted toward gap (visual)");
 }
 
 // =================================================================
@@ -338,6 +332,144 @@ static void test_nav_engage_overrides_flow() {
 }
 
 // =================================================================
+//  Agent out of grid gets zero direction (no silent bypass)
+// =================================================================
+
+static void test_nav_out_of_grid_no_bypass() {
+    // Small grid covering only [-5, +5] in both axes.
+    de::BattlefieldConfig bcfg;
+    bcfg.crowd.agents_per_team = 1;
+    bcfg.crowd.team_spacing    = 3.0f;    // agents at x=-3 and x=+3
+    bcfg.crowd.engage_radius   = 1.0f;    // tiny so nav dominates
+    bcfg.grid_width            = 10;
+    bcfg.grid_height           = 10;
+    bcfg.grid_cell             = 1.0f;
+    bcfg.grid_ox               = -5.0f;
+    bcfg.grid_oy               = -5.0f;
+    bcfg.obstacle_count        = 0;
+
+    de::SimState sim;
+    sim.bootstrap_battlefield(bcfg);
+
+    // Move team 0 agent outside the grid.
+    sim.world.each<de::CrowdAgent, de::Team, de::Position>(
+        [](de::EntityId, de::CrowdAgent&, de::Team& t, de::Position& p) {
+            if (t.id == 0) { p.x = -50.0f; p.y = 0.0f; }
+        });
+
+    sim.tick(1.0);
+
+    // The out-of-grid agent should have zero velocity (no bypass).
+    // It must NOT have moved toward the goal via direct line.
+    bool zero_vel = true;
+    sim.world.each<de::CrowdAgent, de::Team, de::Velocity>(
+        [&](de::EntityId, de::CrowdAgent&, de::Team& t, de::Velocity& v) {
+            if (t.id == 0) {
+                // Velocity should be ~0 because direction was zeroed.
+                // (Separation might add a tiny nudge, so allow small epsilon.)
+                float speed = std::sqrt(v.dx * v.dx + v.dy * v.dy);
+                if (speed > 0.5f) zero_vel = false;
+            }
+        });
+    check(zero_vel,
+          "nav_out_of_grid: agent outside grid has near-zero velocity");
+
+    // The failure counter should have incremented.
+    de::SimSnapshot snap = sim.snapshot();
+    check(snap.nav_failures_this_tick > 0,
+          "nav_out_of_grid: nav failure counted for out-of-grid agent");
+}
+
+// =================================================================
+//  Wall scene: agents cross through gap, not through wall
+// =================================================================
+
+static void test_nav_wall_no_crossing_through_wall() {
+    // Track agent positions every tick and verify no agent teleports
+    // through the wall (crosses x=0 outside the gap y-band).
+    de::ObstacleDef obstacles[39];
+    int count = 0;
+    for (int y = 0; y < 40; ++y) {
+        if (y != 20) {
+            obstacles[count++] = {30, y};
+        }
+    }
+
+    de::BattlefieldConfig bcfg;
+    bcfg.crowd.agents_per_team = 3;
+    bcfg.crowd.team_spacing    = 10.0f;
+    bcfg.crowd.agent_spread    = 0.5f;
+    bcfg.crowd.move_speed      = 3.0f;
+    bcfg.crowd.health          = 10000.0f;
+    bcfg.crowd.engage_radius   = 2.0f;
+    bcfg.crowd.attack_range    = 1.0f;
+    bcfg.grid_width            = 60;
+    bcfg.grid_height           = 40;
+    bcfg.grid_cell             = 1.0f;
+    bcfg.grid_ox               = -30.0f;
+    bcfg.grid_oy               = -20.0f;
+    bcfg.obstacles             = obstacles;
+    bcfg.obstacle_count        = count;
+
+    de::SimState sim;
+    sim.bootstrap_battlefield(bcfg);
+
+    // Track: did any team-0 agent ever occupy a blocked wall cell?
+    bool wall_violated = false;
+    for (int tick = 0; tick < 40; ++tick) {
+        sim.tick(1.0);
+        sim.world.each<de::CrowdAgent, de::Position>(
+            [&](de::EntityId, de::CrowdAgent&, de::Position& p) {
+                // Wall: cell column 30 = world x in [0, 1], all rows except 20.
+                int cx = static_cast<int>(std::floor((p.x - bcfg.grid_ox) / bcfg.grid_cell));
+                int cy = static_cast<int>(std::floor((p.y - bcfg.grid_oy) / bcfg.grid_cell));
+                if (cx == 30 && cy != 20) {
+                    wall_violated = true;
+                }
+            });
+    }
+    check(!wall_violated,
+          "nav_wall_integrity: no agent passed through a blocked wall cell");
+}
+
+// =================================================================
+//  Invalid battlefield config falls back gracefully
+// =================================================================
+
+static void test_nav_invalid_config_fallback() {
+    // Zero-width grid should not crash; should fall back to plain crowd.
+    de::BattlefieldConfig bcfg;
+    bcfg.grid_width  = 0;
+    bcfg.grid_height = 0;
+    bcfg.crowd.agents_per_team = 2;
+
+    de::SimState sim;
+    sim.bootstrap_battlefield(bcfg);
+
+    // Should have agents but no nav grid.
+    check(sim.world.entity_count() == 4,
+          "nav_invalid_config: 4 agents created despite invalid grid");
+
+    sim.tick(1.0);
+
+    // No nav queries (grid not installed).
+    de::SimSnapshot snap = sim.snapshot();
+    check(snap.nav_queries_this_tick == 0,
+          "nav_invalid_config: no nav queries with invalid grid");
+    check(snap.nav_failures_this_tick == 0,
+          "nav_invalid_config: no nav failures with invalid grid");
+
+    // Agents still move (direct line fallback, no grid installed).
+    bool moved = false;
+    sim.world.each<de::CrowdAgent, de::Team, de::Position>(
+        [&](de::EntityId, de::CrowdAgent&, de::Team& t, de::Position& p) {
+            if (t.id == 0 && p.x > -20.0f + 0.1f) moved = true;
+        });
+    check(moved,
+          "nav_invalid_config: agents move via direct line (no grid)");
+}
+
+// =================================================================
 //  Telemetry: nav_queries > 0 with grid active
 // =================================================================
 
@@ -369,6 +501,9 @@ int main() {
     test_nav_regression_no_obstacle();
     test_nav_wall_agents_avoid();
     test_nav_wall_agents_cross_gap();
+    test_nav_out_of_grid_no_bypass();
+    test_nav_wall_no_crossing_through_wall();
+    test_nav_invalid_config_fallback();
     test_nav_engage_overrides_flow();
     test_nav_telemetry();
 

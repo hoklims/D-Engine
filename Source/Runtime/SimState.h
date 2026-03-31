@@ -49,8 +49,9 @@ struct SimSnapshot {
     uint32_t    agents_engaged = 0;
 
     // Navigation telemetry (this tick).
-    uint32_t    nav_queries_this_tick = 0;
-    uint32_t    nav_blocked_cells     = 0;
+    uint32_t    nav_queries_this_tick  = 0;
+    uint32_t    nav_failures_this_tick = 0;
+    uint32_t    nav_blocked_cells      = 0;
 };
 
 // Signature for a fixed-step simulation system.
@@ -149,6 +150,7 @@ private:
     uint32_t      separation_pairs_this_tick_  = 0;
     uint32_t      agents_engaged_             = 0;
     uint32_t      nav_queries_this_tick_      = 0;
+    uint32_t      nav_failures_this_tick_     = 0;
     uint32_t      nav_blocked_cells_          = 0;
     BattlefieldGrid nav_grids_[k_max_teams]   = {};
     const BattlefieldGrid* nav_grid_ptrs_[k_max_teams] = {};

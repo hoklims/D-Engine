@@ -80,6 +80,7 @@ void SimState::bootstrap_crowd(const CrowdConfig& cfg) {
     separation_pairs_this_tick_  = 0;
     agents_engaged_              = 0;
     nav_queries_this_tick_       = 0;
+    nav_failures_this_tick_      = 0;
     nav_blocked_cells_           = 0;
     nav_grid_active_             = false;
     set_battlefield_grids(nullptr, 0);
@@ -116,6 +117,15 @@ void SimState::bootstrap_crowd(const CrowdConfig& cfg) {
 }
 
 void SimState::bootstrap_battlefield(const BattlefieldConfig& cfg) {
+    // Validate grid configuration -- fail fast on nonsensical scenes.
+    // Zero-area grids or non-positive cell sizes cannot produce a valid
+    // flow field and indicate a configuration bug.
+    if (cfg.grid_width <= 0 || cfg.grid_height <= 0 || cfg.grid_cell <= 0.0f) {
+        // Fall back to plain crowd bootstrap without navigation.
+        bootstrap_crowd(cfg.crowd);
+        return;
+    }
+
     // Reuse crowd bootstrap for agents (clears nav state too).
     bootstrap_crowd(cfg.crowd);
 
@@ -179,6 +189,7 @@ void SimState::tick(double step_dt) {
     separation_pairs_this_tick_     = crowd_separation_pairs_this_tick();
     agents_engaged_                 = crowd_agents_engaged_this_tick();
     nav_queries_this_tick_          = crowd_nav_queries_this_tick();
+    nav_failures_this_tick_         = crowd_nav_failures_this_tick();
 
     cmds_queued_last_ = cmds_.pending();
     cmds_.apply(world);
@@ -203,6 +214,7 @@ void SimState::shutdown() {
     separation_pairs_this_tick_  = 0;
     agents_engaged_              = 0;
     nav_queries_this_tick_       = 0;
+    nav_failures_this_tick_      = 0;
     nav_blocked_cells_           = 0;
     nav_grid_active_             = false;
     set_battlefield_grids(nullptr, 0);
@@ -232,6 +244,7 @@ SimSnapshot SimState::snapshot() const {
     snap.separation_pairs_this_tick     = separation_pairs_this_tick_;
     snap.agents_engaged                 = agents_engaged_;
     snap.nav_queries_this_tick          = nav_queries_this_tick_;
+    snap.nav_failures_this_tick         = nav_failures_this_tick_;
     snap.nav_blocked_cells              = nav_blocked_cells_;
     return snap;
 }

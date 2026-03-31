@@ -26,6 +26,7 @@ static uint32_t s_candidates_scanned     = 0;
 static uint32_t s_separation_pairs       = 0;
 static uint32_t s_agents_engaged         = 0;
 static uint32_t s_nav_queries            = 0;
+static uint32_t s_nav_failures           = 0;
 
 uint32_t crowd_attacks_this_tick()            { return s_attacks_this_tick; }
 uint32_t crowd_deaths_queued_this_tick()      { return s_deaths_this_tick; }
@@ -33,6 +34,7 @@ uint32_t crowd_candidates_scanned_this_tick() { return s_candidates_scanned; }
 uint32_t crowd_separation_pairs_this_tick()   { return s_separation_pairs; }
 uint32_t crowd_agents_engaged_this_tick()     { return s_agents_engaged; }
 uint32_t crowd_nav_queries_this_tick()        { return s_nav_queries; }
+uint32_t crowd_nav_failures_this_tick()       { return s_nav_failures; }
 
 void set_battlefield_grids(const BattlefieldGrid* const* grids, uint32_t count) {
     s_nav_grids      = grids;
@@ -47,6 +49,7 @@ void     reset_crowd_tick_counters() {
     s_separation_pairs   = 0;
     s_agents_engaged     = 0;
     s_nav_queries        = 0;
+    s_nav_failures       = 0;
     s_hit_buffer.clear();
 }
 
@@ -102,7 +105,10 @@ uint32_t compute_battle_goal(WorldView& view, float /*dt*/,
             BattleGoal& goal, DesiredDirection& dir) {
             ++count;
 
-            // Try flow-field navigation if a grid is installed for this team.
+            // When navigation grids are installed, the flow field is
+            // authoritative.  If sample_flow fails (out of grid, blocked,
+            // unreachable), the agent gets a zero direction -- it does NOT
+            // fall back to direct line, which would silently bypass obstacles.
             if (s_nav_grids && team.id < s_nav_grid_count) {
                 const BattlefieldGrid* grid = s_nav_grids[team.id];
                 if (grid) {
@@ -117,11 +123,15 @@ uint32_t compute_battle_goal(WorldView& view, float /*dt*/,
                             return;
                         }
                     }
-                    // Fallthrough: unreachable or zero flow -> direct line.
+                    // Fail-safe: zero direction (hold position).
+                    ++s_nav_failures;
+                    dir.dx = 0.0f;
+                    dir.dy = 0.0f;
+                    return;
                 }
             }
 
-            // Direct line toward goal (original behavior).
+            // No grid installed -- direct line toward goal.
             float dx  = goal.x - pos.x;
             float dy  = goal.y - pos.y;
             float len = std::sqrt(dx * dx + dy * dy);
