@@ -39,14 +39,35 @@ Toujours atomiques. Diff propre.
 ## Yoyo -- Intelligence de code AST
 
 Yoyo tourne dans un conteneur Docker (`yoyo:latest`, montage `-v .:/repo`).
-L'index AST est deja construit -- les outils read-indexed sont prets.
 
 ### Regles obligatoires
 - Ne JAMAIS passer de chemin Windows (`H:/...`, `C:/...`) aux outils yoyo
-- Appeler `boot` et `index` en parallele sur premier contact (deja fait si cette session)
+- Appeler `boot` et `index` en parallele sur premier contact avec le repo
 - Chemins internes : `/repo` ou `/repo/sous-dossier`
 
-### Quand utiliser yoyo (PRIORITAIRE sur Grep/Glob/Read bruts)
+### Fraicheur de l'index -- CRITIQUE
+
+L'index AST devient perime des qu'un fichier source est cree, modifie ou
+supprime. Un index perime rend `inspect`, `search`, `ask`, `impact`, etc.
+aveugles aux changements recents.
+
+**Quand re-indexer** (appel `index` sans argument) :
+- Apres toute creation de fichier(s) source (.h, .cpp)
+- Apres tout rename/move/delete de fichier(s) source
+- Apres un step d'implementation qui a modifie >= 3 fichiers
+- Avant toute phase d'exploration yoyo si des fichiers ont change depuis
+  le dernier `index`
+- En cas de doute → re-indexer. Le cout est faible (~2s).
+
+**Quand NE PAS re-indexer** :
+- Si seuls des fichiers non-source ont change (CMakeLists, .md, .json)
+- Si on vient juste d'indexer et qu'aucun source n'a change depuis
+
+### Usage obligatoire de yoyo -- PRIORITAIRE sur Grep/Glob/Read bruts
+
+Les outils yoyo ne sont pas optionnels. Ils DOIVENT etre utilises quand
+l'intention correspond au tableau ci-dessous. Utiliser Grep/Glob/Read bruts
+a la place de yoyo dans ces cas est une VIOLATION du protocole.
 
 | Intention | Outil yoyo | Pourquoi |
 |---|---|---|
@@ -61,6 +82,18 @@ L'index AST est deja construit -- les outils read-indexed sont prets.
 | Verifier la sante globale du code | `health` | Metriques de complexite, couplage, couverture |
 | Appliquer une modification safe | `change` | Edit avec bornes d'erreur, mieux que Edit brut pour refactors |
 | Enchainer plusieurs lectures | `script` | Compose plusieurs outils en un seul appel |
+
+### Integration dans le workflow OCO
+
+Yoyo s'insere dans le protocole OCO aux moments suivants :
+- **Phase Classify** : `health` pour evaluer l'etat du code avant de commencer
+- **Phase Plan (exploration)** : `map` + `search` + `inspect` pour comprendre
+  la zone impactee AVANT de planifier. Ne jamais planifier a l'aveugle.
+- **Phase Execute (avant un step d'implementation)** : `judge_change` si le
+  step modifie du code existant (pas pour du code 100% nouveau)
+- **Phase Execute (apres un step d'implementation)** : `index` pour rafraichir
+  l'AST, puis `impact` si d'autres steps dependent du code modifie
+- **Phase Verify** : `health` en complement du build/test
 
 ### Quand NE PAS utiliser yoyo
 - Lecture d'un fichier specifique deja connu → `Read` direct
@@ -164,3 +197,55 @@ Apres chaque step marque verify=yes :
 - Decisions prises
 - Decisions reportees
 - Deviations du plan (si le plan a ete ajuste en cours de route)
+
+## Skills OCO -- Utilisation obligatoire
+
+Les skills `/oco-*` sont le point d'entree principal pour les workflows
+structures. Ils DOIVENT etre utilises quand l'intention correspond, via
+l'outil `Skill`. Ne JAMAIS reproduire manuellement ce qu'un skill fait.
+
+### Routing par intention (contraignant)
+
+| Situation detectee | Skill a invoquer | Obligatoire |
+|---|---|---|
+| Apres TOUT changement de fichier source | `/oco-verify-fix` | **OUI** |
+| Refactoring, rename, restructure, extract, move | `/oco-safe-refactor` | **OUI** |
+| Bug, comportement casse, regression (sans stacktrace) | `/oco-investigate-bug` | **OUI** |
+| Stacktrace, panic, exception, crash, erreur runtime | `/oco-trace-stack` | **OUI** |
+| Explorer, comprendre un module, un flux, une archi | `/oco-inspect-repo-area` | **OUI** |
+| Orchestration complexe multi-etapes | `/oco` | recommande |
+
+### Regles
+
+1. **`/oco-verify-fix` est NON NEGOCIABLE** apres tout changement de code.
+   Ne jamais considerer un step d'implementation comme termine sans avoir
+   execute ce skill (ou, si indisponible, build → types → lint → tests
+   manuellement).
+
+2. **`/oco-safe-refactor` AVANT tout refactoring**. Ne jamais commencer a
+   renommer/deplacer/extraire du code sans passer par ce skill qui fait
+   l'analyse d'impact en amont.
+
+3. **`/oco-investigate-bug` apres 2 tentatives de fix echouees** sur le
+   meme probleme. Ne pas continuer a deviner -- laisser le skill structurer
+   l'investigation.
+
+4. **`/oco-trace-stack` des qu'une stacktrace apparait** dans la sortie
+   d'un build, test, ou run. Ne pas parser la stacktrace a la main.
+
+5. **`/oco-inspect-repo-area` pour l'exploration initiale** d'une zone de
+   code inconnue. Ne pas sauter l'exploration pour aller directement coder.
+
+6. Les skills OCO s'integrent dans le protocole OCO headless :
+   - Phase Classify → le routing determine quel skill utiliser
+   - Phase Execute → les steps de type `verify` DOIVENT appeler `/oco-verify-fix`
+   - Phase Verify Gate → `/oco-verify-fix` remplace le build/test/lint manuel
+
+### Fallback si skills indisponibles
+
+Si les skills `/oco-*` ne sont pas listes dans les skills disponibles :
+- `/oco-verify-fix` → build Debug + ctest + zero warnings (manuel)
+- `/oco-safe-refactor` → @refactorer puis @refactor-reviewer (sub-agents)
+- `/oco-investigate-bug` → @debugger (sub-agent)
+- `/oco-trace-stack` → @debugger (sub-agent)
+- `/oco-inspect-repo-area` → Agent(subagent_type=Explore)
