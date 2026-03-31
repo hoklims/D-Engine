@@ -20,6 +20,13 @@ cmake --preset default
 cmake --build Build --config Debug
 ```
 
+## Test
+
+```bash
+cmake --build Build --config Debug --target FixedStepTest
+ctest --test-dir Build --build-config Debug
+```
+
 ## Run
 
 ```bash
@@ -35,6 +42,7 @@ A 1280x720 window opens. Close it to exit.
 
 ## Repository map
 
-- Source/Runtime/: engine core (entry point, main loop, clock)
+- Source/Runtime/: engine core (entry point, main loop, clock, fixed-step)
 - Source/Platform/: platform abstraction (Win32 window)
+- Tests/: non-graphical smoke tests
 - Docs/2.0/: specs and architecture documents

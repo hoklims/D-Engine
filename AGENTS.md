@@ -19,6 +19,11 @@ Build:
 - `cmake --build Build --config Debug`
 - `cmake --build Build --config Release`
 
+Test:
+
+- `cmake --build Build --config Debug --target FixedStepTest`
+- `ctest --test-dir Build --build-config Debug`
+
 Run:
 
 - `./Build/Source/Debug/DEngine.exe`
@@ -32,8 +37,9 @@ Run:
 
 ## Repository map
 
-- Source/Runtime/: entry point, engine loop, clock
+- Source/Runtime/: entry point, engine loop, clock, fixed-step, config
 - Source/Platform/: Win32 window
+- Tests/: non-graphical smoke tests
 
 ## Regle de branche
 

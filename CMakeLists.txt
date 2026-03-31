@@ -10,3 +10,6 @@ if(MSVC)
 endif()
 
 add_subdirectory(Source)
+
+enable_testing()
+add_subdirectory(Tests)
