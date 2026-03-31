@@ -18,3 +18,9 @@ add_executable(TelemetryTest
 )
 target_include_directories(TelemetryTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
 add_test(NAME TelemetryTest COMMAND TelemetryTest)
+
+add_executable(EcsTest
+    EcsTest.cpp
+)
+target_link_libraries(EcsTest PRIVATE DEcs)
+add_test(NAME EcsTest COMMAND EcsTest)
