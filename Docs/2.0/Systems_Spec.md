@@ -19,8 +19,9 @@ Les blocs suivants existent deja dans la branche:
 - navigation strategique via `BattleGoal`,
 - navigation obstacle-aware via `BattlefieldGrid`,
 - separation locale soft,
+- LOD comportemental a 4 tiers,
 - combat simultane avec morts differees,
-- tests dedies runtime, ECS, crowd et navigation.
+- tests dedies runtime, ECS, crowd, navigation et LOD.
 
 Les blocs suivants restent des cibles, pas encore des realites:
 
@@ -28,7 +29,6 @@ Les blocs suivants restent des cibles, pas encore des realites:
 - allocateurs temps reel,
 - replay/hash de simulation,
 - broadphase melee dediee,
-- LOD comportemental,
 - extraction crowd vers le rendu,
 - rendu DX12.
 
@@ -193,6 +193,15 @@ Tiers cibles:
 - `T2`: simulation echantillonnee,
 - `T3`: representation quasi visuelle.
 
+Etat:
+
+- implemente en version 1,
+- 4 tiers a stride `1/2/4/8`,
+- agents engages forces en `T0`,
+- classification par distance a un centre de bataille explicite,
+- gating applique aux systemes strategiques,
+- telemetry de tiers et de skips en place.
+
 ## 7. Combat
 
 ### Broadphase
@@ -324,6 +333,7 @@ Etat:
 - timings CPU runtime et par systeme en place,
 - compteurs crowd de base en place,
 - compteurs navigation de base en place,
+- compteurs LOD de base en place,
 - timings GPU et perf gates non implementes.
 
 ## 11. Budgets structurants

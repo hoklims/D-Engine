@@ -28,7 +28,9 @@ Ce qui existe deja dans la branche `de-engine-2.0`:
 - separation locale,
 - battle goals + `EngageRadius`,
 - navigation battlefield via grille statique + BFS integration field,
-- couverture de tests dediee (`CrowdTest`, `NavTest`).
+- LOD comportemental a 4 tiers avec telemetry dediee,
+- centre LOD explicite, independant de l'origine monde,
+- couverture de tests dediee (`CrowdTest`, `NavTest`, `LodTest`).
 
 Ce qui manque encore avant de sortir du bloc runtime/crowd:
 
@@ -36,7 +38,6 @@ Ce qui manque encore avant de sortir du bloc runtime/crowd:
 - allocateurs temps reel,
 - replay/hash de simulation,
 - broadphase melee dediee,
-- LOD comportemental,
 - extraction de frame,
 - debut du rendu DX12.
 
@@ -103,6 +104,8 @@ Livrables atteints:
 - `BattleGoal` et `EngageRadius`,
 - navigation obstacle-aware via `BattlefieldGrid`,
 - separation locale soft,
+- LOD comportemental a 4 tiers, avec gating des systemes strategiques,
+- telemetry crowd et LOD coherent post-tick,
 - combat simple avec resolution simultanee,
 - scenes de test crowd et battlefield.
 
@@ -110,7 +113,6 @@ Livrables encore ouverts:
 
 - avoidance locale plus intelligente,
 - broadphase melee dediee,
-- LOD comportemental,
 - extraction crowd vers le rendu.
 
 ## Phase 3 - Pipeline visuel crowd-first
@@ -169,17 +171,18 @@ aucun pari avance n'entre dans le coeur du moteur sans gain mesure.
 
 ## Prochain verrou recommande
 
-Le prochain lot utile n'est plus la direction strategique brute. Elle existe
-deja. Le verrou suivant est l'un des deux suivants:
+Le prochain lot utile n'est plus la navigation strategique simple ni le premier
+LOD comportemental. Ils existent deja. Le verrou suivant est l'un des deux
+suivants:
 
-1. enrichir la navigation crowd:
-   obstacles dynamiques simples, avoidance plus credible
-   (contrat de fallback et validation deja en place);
-2. commencer a borner le cout crowd:
-   broadphase melee, budgets explicites, puis LOD comportemental.
+1. borner plus finement le cout du combat crowd:
+   broadphase melee dediee, budgets explicites, telemetry plus proche du
+   gameplay;
+2. verrouiller la preuve du runtime:
+   replay/hash de simulation, puis seulement rendu crowd-first.
 
 Le chemin recommande a court terme est:
 
-- finir proprement la navigation crowd runtime,
-- ensuite introduire le premier LOD comportemental,
-- puis seulement ouvrir le pipeline de rendu crowd-first.
+- broadphase melee dediee,
+- replay/hash de simulation,
+- puis seulement ouverture du pipeline de rendu crowd-first.

@@ -30,8 +30,10 @@ Etat reel de la branche au 2026-03-31:
 - navigation strategique via `BattleGoal`,
 - navigation obstacle-aware via `BattlefieldGrid`,
 - separation locale soft en place,
+- LOD comportemental a 4 tiers en place,
+- centre LOD explicite en place,
 - combat simultane avec morts differees en place,
-- tests dedies runtime, ECS, crowd et navigation en place.
+- tests dedies runtime, ECS, crowd, navigation et LOD en place.
 
 Ce qui reste hors du code aujourd'hui:
 
@@ -39,7 +41,6 @@ Ce qui reste hors du code aujourd'hui:
 - allocateurs temps reel,
 - replay/hash de simulation,
 - broadphase melee dediee,
-- LOD comportemental,
 - rendu DX12 et extraction de frame crowd-first.
 
 ## Couches
@@ -105,15 +106,16 @@ Boucle actuellement implementee:
 Pipeline crowd actuellement implementee:
 
 1. `SelectTargets`,
-2. `ComputeBattleGoal`,
-3. `ComputeDesiredMove`,
-4. `ApplyCrowdSteer`,
-5. `ApplySeparation`,
-6. `AttackTargets`,
-7. `ResolveDamage`,
-8. `RemoveDead`,
-9. `IntegrateVelocity`,
-10. `IntegratePosition`.
+2. `ClassifyLod`,
+3. `ComputeBattleGoal`,
+4. `ComputeDesiredMove`,
+5. `ApplyCrowdSteer`,
+6. `ApplySeparation`,
+7. `AttackTargets`,
+8. `ResolveDamage`,
+9. `RemoveDead`,
+10. `IntegrateVelocity`,
+11. `IntegratePosition`.
 
 Boucle cible a moyen terme:
 
@@ -178,6 +180,7 @@ Choix cible:
 
 - `BattlefieldGrid` statique + BFS integration field aujourd'hui,
 - `SpatialGrid` pour le nearest-enemy aujourd'hui,
+- contrat fail-safe explicite quand la navigation n'a pas de solution,
 - flow fields plus riches pour les masses ensuite,
 - regles locales pour casser les impasses ensuite,
 - officiers et exceptions hors du flux principal si necessaire.
@@ -186,6 +189,7 @@ Choix cible:
 
 - separation locale soft aujourd'hui,
 - voisinage borne via grille aujourd'hui,
+- LOD comportemental crowd aujourd'hui,
 - ORCA ou variante compatible budget plus tard,
 - precision degressive avec la distance plus tard.
 

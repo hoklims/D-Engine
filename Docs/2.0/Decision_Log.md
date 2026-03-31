@@ -201,3 +201,30 @@ Pourquoi:
   (`nav_failures_this_tick`),
 - validation de la config empeche les scenes absurdes de produire un
   comportement imprevisible.
+
+## DL-017 - Premier LOD comportemental runtime
+
+Decision:
+
+- la foule utilise un premier LOD comportemental a 4 tiers (`T0` a `T3`),
+- les agents engages restent forces en `T0`,
+- seuls les systemes strategiques et de navigation locale sont gates a ce stade.
+
+Pourquoi:
+
+- il fallait commencer a reduire le cout crowd sans attendre le rendu,
+- le gating des systemes les moins critiques donne un premier gain simple,
+- cela rend visible la degradation de simulation dans le runtime headless.
+
+## DL-018 - Centre LOD explicite, pas origine monde
+
+Decision:
+
+- la classification LOD ne depend plus de la distance a `(0,0)`,
+- elle depend d'un centre de bataille explicite stocke dans `BehaviorLodConfig`.
+
+Pourquoi:
+
+- une bataille translatee dans l'espace ne doit pas changer de tiers LOD,
+- l'origine monde n'est pas une notion gameplay defendable,
+- cela prepare une future gestion explicite du centre d'interet de bataille.

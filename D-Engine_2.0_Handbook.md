@@ -357,8 +357,10 @@ En clair:
 - le moteur headless crowd-first existe deja,
 - la foule sait cibler, se deplacer, se separer, combattre et contourner des
   obstacles statiques,
-- le rendu crowd-first, le replay complet, les jobs et le LOD comportemental
-  restent devant nous.
+- le runtime crowd sait aussi degrader son cout via un premier LOD
+  comportemental a 4 tiers, pilote par un centre de bataille explicite,
+- le rendu crowd-first, le replay complet, les jobs et le broadphase melee
+  dedie restent devant nous.
 
 -------------------------------------------------------------------------------
 

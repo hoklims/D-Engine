@@ -13,6 +13,7 @@ Etat au 2026-03-31:
 - le socle runtime est largement pose,
 - la simulation crowd existe deja sous forme jouable headless,
 - la navigation battlefield obstacle-aware existe deja en version statique,
+- le premier LOD comportemental crowd est en place,
 - le rendu crowd-first n'a pas encore commence.
 
 ## Etape 1 - Cadrage
@@ -68,13 +69,14 @@ Ce qui existe deja:
 - `BattleGoal` + `EngageRadius`,
 - combat simultane avec morts differees,
 - separation locale,
-- `BattlefieldGrid` statique + BFS integration field.
+- `BattlefieldGrid` statique + BFS integration field,
+- LOD comportemental a 4 tiers avec centre explicite,
+- telemetry LOD coherente post-tick.
 
 Ce qui reste a faire dans cette etape:
 
 - avoidance plus credible,
 - broadphase melee dediee,
-- premier LOD comportemental,
 - budgets crowd plus explicites.
 
 ## Etape 4 - Rendu crowd-first
@@ -104,11 +106,10 @@ Statut: non demarree
 
 Ordre recommande a court terme:
 
-1. enrichir la navigation crowd:
-   obstacles dynamiques simples, avoidance plus credible
-   (contrat de fallback et validation des scenes deja en place);
-2. borner le cout crowd:
-   broadphase melee, premiers budgets, LOD comportemental;
+1. borner le cout et la lisibilite du combat crowd:
+   broadphase melee, telemetry plus proche du gameplay, premiers budgets;
+2. verrouiller la preuve technique:
+   replay/hash, divergence detection, captures de reference;
 3. ouvrir le rendu crowd-first:
    extraction de frame, DX12 minimal, premiere visibilite runtime.
 
