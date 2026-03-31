@@ -5,7 +5,7 @@
 Lister les systemes indispensables de D-Engine 2.0, leur role et leur contrat de
 performance.
 
-## Snapshot implemente au 2026-03-31
+## Snapshot implemente au 2026-04-01
 
 Les blocs suivants existent deja dans la branche:
 
@@ -22,13 +22,16 @@ Les blocs suivants existent deja dans la branche:
 - LOD comportemental a 4 tiers,
 - broadphase melee dedie,
 - combat simultane avec morts differees,
-- tests dedies runtime, ECS, crowd, navigation, LOD et melee.
+- hash de simulation par tick + historique recent,
+- budget contracts explicites,
+- reponse budget-aware progressive,
+- tests dedies runtime, ECS, crowd, navigation, LOD, melee, hash et budget.
 
 Les blocs suivants restent des cibles, pas encore des realites:
 
 - job system,
 - allocateurs temps reel,
-- replay/hash de simulation,
+- capture/replay complet des inputs,
 - extraction crowd vers le rendu,
 - rendu DX12.
 
@@ -63,7 +66,11 @@ Contrat:
 
 Etat:
 
-- non implemente.
+- implemente en version 1,
+- hash de simulation par tick,
+- historique recent via ring buffer,
+- comparaison headless de sequences de hash,
+- capture/replay complet des inputs encore absent.
 
 ## 2. ECS
 
@@ -201,7 +208,10 @@ Etat:
 - agents engages forces en `T0`,
 - classification par distance a un centre de bataille explicite,
 - gating applique aux systemes strategiques,
-- telemetry de tiers et de skips en place.
+- telemetry de tiers et de skips en place,
+- reponse budget-aware avec hysteresis en place,
+- separation explicite entre etat applique au tick courant et etat decide pour
+  le tick suivant.
 
 ## 7. Combat
 
@@ -341,6 +351,9 @@ Etat:
 - compteurs navigation de base en place,
 - compteurs LOD de base en place,
 - compteurs melee de base en place,
+- hash de simulation par tick en place,
+- budget contracts explicites en place,
+- reponse budget-aware visible dans le snapshot en place,
 - timings GPU et perf gates non implementes.
 
 ## 11. Budgets structurants
@@ -352,3 +365,10 @@ Les budgets exacts seront calibres par benchmark, mais les principes sont fixes:
 - le p99 compte plus que le pic isole,
 - la degradation doit etre visible dans les metriques avant de devenir visible a
   l'oeil.
+
+Etat:
+
+- contrats de budget runtime en place,
+- evaluation par tick en place,
+- premiere degradation automatique crowd en place,
+- auto-throttle plus riche encore absent.

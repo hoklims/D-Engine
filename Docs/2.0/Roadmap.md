@@ -5,7 +5,7 @@
 La roadmap suit une logique simple: rendre inevitable un vertical slice
 crowd-first convaincant.
 
-## Etat au 2026-03-31
+## Etat au 2026-04-01
 
 Resume:
 
@@ -31,13 +31,17 @@ Ce qui existe deja dans la branche `de-engine-2.0`:
 - LOD comportemental a 4 tiers avec telemetry dediee,
 - centre LOD explicite, independant de l'origine monde,
 - broadphase melee dedie avec telemetry de combat,
-- couverture de tests dediee (`CrowdTest`, `NavTest`, `LodTest`, `MeleeTest`).
+- hash de simulation par tick + historique recent + comparaison headless,
+- budget contracts explicites par tick,
+- reponse budget-aware progressive sur le LOD strategique,
+- couverture de tests dediee (`CrowdTest`, `NavTest`, `LodTest`,
+  `MeleeTest`, `SimHashTest`, `BudgetTest`, `BudgetResponseTest`).
 
 Ce qui manque encore avant de sortir du bloc runtime/crowd:
 
 - job system,
 - allocateurs temps reel,
-- replay/hash de simulation,
+- capture/replay complet des inputs,
 - extraction de frame,
 - debut du rendu DX12.
 
@@ -74,6 +78,9 @@ Livrables atteints:
 - ECS archetypal custom (`EntityPool`, `Archetype`, `World`, `WorldView`),
 - `CommandBuffer`,
 - `SimState` et pipeline de systemes fixes,
+- hash de simulation par tick + historique,
+- comparaison headless de sequences de hash,
+- budget contracts runtime explicites,
 - batterie de tests runtime et ECS.
 
 Livrables encore ouverts:
@@ -81,7 +88,7 @@ Livrables encore ouverts:
 - jobs,
 - memoire,
 - telemetry GPU,
-- replay minimal,
+- replay complet des inputs,
 - DX12 minimal.
 
 Critere de sortie:
@@ -107,13 +114,14 @@ Livrables atteints:
 - LOD comportemental a 4 tiers, avec gating des systemes strategiques,
 - telemetry crowd et LOD coherent post-tick,
 - broadphase melee dedie et telemetre,
+- degradation budget-aware progressive avec hysteresis,
 - combat simple avec resolution simultanee,
 - scenes de test crowd et battlefield.
 
 Livrables encore ouverts:
 
 - avoidance locale plus intelligente,
-- replay/hash de simulation,
+- capture/replay complet au-dela du hash,
 - extraction crowd vers le rendu.
 
 ## Phase 3 - Pipeline visuel crowd-first
@@ -173,17 +181,17 @@ aucun pari avance n'entre dans le coeur du moteur sans gain mesure.
 ## Prochain verrou recommande
 
 Le prochain lot utile n'est plus la navigation strategique simple, le premier
-LOD comportemental ni le broadphase melee dedie. Ils existent deja. Le verrou
-suivant est l'un des deux suivants:
+LOD comportemental, le broadphase melee, le hash de simulation ou les budgets
+explicites. Ils existent deja. Le verrou suivant est l'ouverture du pipeline
+visuel crowd-first:
 
-1. verrouiller la preuve du runtime:
-   replay/hash de simulation, puis seulement rendu crowd-first.
-2. enrichir la simulation crowd:
-   avoidance plus credible, budgets explicites, telemetry plus proche du
-   gameplay.
+1. extraction de frame et DX12 minimal,
+2. premiere visibilite runtime cote rendu,
+3. puis crowd rendering scalable.
 
 Le chemin recommande a court terme est:
 
-- replay/hash de simulation,
-- puis budgets crowd plus explicites,
-- puis seulement ouverture du pipeline de rendu crowd-first.
+- extraction de frame,
+- DX12 minimal,
+- puis premiere tranche de rendu crowd-first,
+- ensuite avoidance plus credible et replay complet des inputs.

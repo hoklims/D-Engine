@@ -19,7 +19,7 @@ Le CPU decide. Le GPU absorbe l'echelle.
 
 ## Snapshot actuel
 
-Etat reel de la branche au 2026-03-31:
+Etat reel de la branche au 2026-04-01:
 
 - runtime Win32 minimal en place,
 - tick fixe, timeline et telemetry CPU en place,
@@ -34,13 +34,18 @@ Etat reel de la branche au 2026-03-31:
 - centre LOD explicite en place,
 - broadphase melee dedie en place,
 - combat simultane avec morts differees en place,
-- tests dedies runtime, ECS, crowd, navigation, LOD et melee en place.
+- hash de simulation par tick + historique recent en place,
+- comparaison headless de sequences de hash en place,
+- budget contracts explicites en place,
+- reponse budget-aware avec hysteresis en place,
+- tests dedies runtime, ECS, crowd, navigation, LOD, melee, hash et budget
+  en place.
 
 Ce qui reste hors du code aujourd'hui:
 
 - job system,
 - allocateurs temps reel,
-- replay/hash de simulation,
+- capture/replay complet des inputs,
 - rendu DX12 et extraction de frame crowd-first.
 
 ## Couches
@@ -99,9 +104,10 @@ Boucle actuellement implementee:
 2. accumulation fixed-step,
 3. `SimState::tick`,
 4. apply des commandes differees,
-5. snapshot runtime et telemetry,
-6. `render` placeholder,
-7. `end_frame`.
+5. hash de simulation + budgets + reponse budget-aware,
+6. snapshot runtime et telemetry,
+7. `render` placeholder,
+8. `end_frame`.
 
 Pipeline crowd actuellement implementee:
 
@@ -136,6 +142,7 @@ Le CPU garde:
 - l'identite des agents,
 - les regles de combat,
 - le determinisme,
+- le hash de simulation,
 - les budgets de simulation.
 
 Le GPU prend:

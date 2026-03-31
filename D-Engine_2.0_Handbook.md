@@ -5,7 +5,7 @@
 > Il remplace, pour cette generation, le role du handbook actuel.
 > Les autres docs 2.0 detaillent et executent cette vision; ils ne doivent pas la contredire.
 
-Last updated: 2026-03-31
+Last updated: 2026-04-01
 
 -------------------------------------------------------------------------------
 
@@ -306,6 +306,9 @@ Priorites:
 
 - capture et relecture d'inputs,
 - hash de simulation par tick,
+- comparaison headless de sequences de hash,
+- contrats de budget explicites,
+- reponse budget-aware visible et reversible,
 - timeline de budgets,
 - affichage des tiers de LOD,
 - compteur d'agents actifs,
@@ -361,7 +364,12 @@ En clair:
   comportemental a 4 tiers, pilote par un centre de bataille explicite,
 - le combat crowd dispose aussi d'un premier broadphase melee dedie et
   telemetre,
-- le rendu crowd-first, le replay complet et les jobs restent devant nous.
+- la preuve de simulation existe deja sous forme de hash par tick,
+  historique recent et comparaison headless,
+- les budgets runtime sont maintenant explicites et pilotent une premiere
+  degradation budget-aware avec hysteresis,
+- le rendu crowd-first, le replay complet des inputs et les jobs restent
+  devant nous.
 
 -------------------------------------------------------------------------------
 

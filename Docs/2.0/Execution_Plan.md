@@ -7,7 +7,7 @@ nouvelle generation du moteur.
 
 ## Snapshot d'execution
 
-Etat au 2026-03-31:
+Etat au 2026-04-01:
 
 - l'etape de cadrage est terminee,
 - le socle runtime est largement pose,
@@ -15,6 +15,8 @@ Etat au 2026-03-31:
 - la navigation battlefield obstacle-aware existe deja en version statique,
 - le premier LOD comportemental crowd est en place,
 - le premier broadphase melee crowd est en place,
+- la preuve minimale de simulation existe deja via hash par tick,
+- les budget contracts et la premiere reponse budget-aware sont en place,
 - le rendu crowd-first n'a pas encore commence.
 
 ## Etape 1 - Cadrage
@@ -42,13 +44,16 @@ Ce qui existe deja:
 - timeline et telemetry CPU,
 - ECS archetypal,
 - pipeline de systemes fixes,
-- `WorldView` et `CommandBuffer`.
+- `WorldView` et `CommandBuffer`,
+- hash de simulation par tick + historique recent,
+- comparaison headless de sequences de hash,
+- budget contracts runtime explicites.
 
 Ce qui manque encore:
 
 - job system,
 - allocateurs temps reel,
-- replay/hash,
+- replay complet des inputs,
 - DX12 minimal.
 
 ## Etape 3 - Simulation de foule
@@ -73,13 +78,14 @@ Ce qui existe deja:
 - `BattlefieldGrid` statique + BFS integration field,
 - LOD comportemental a 4 tiers avec centre explicite,
 - broadphase melee dedie avec telemetry de base,
-- telemetry LOD coherente post-tick.
+- telemetry LOD coherente post-tick,
+- reponse budget-aware progressive avec hysteresis.
 
 Ce qui reste a faire dans cette etape:
 
 - avoidance plus credible,
-- replay/hash de simulation,
-- budgets crowd plus explicites.
+- capture/replay complet au-dela du hash,
+- budgets gameplay plus riches et plus proches du ressenti joueur.
 
 ## Etape 4 - Rendu crowd-first
 
@@ -108,12 +114,12 @@ Statut: non demarree
 
 Ordre recommande a court terme:
 
-1. verrouiller la preuve technique:
-   replay/hash, divergence detection, captures de reference;
-2. borner plus finement le runtime crowd:
-   budgets explicites, telemetry plus proche du gameplay, avoidance plus credible;
-3. ouvrir le rendu crowd-first:
-   extraction de frame, DX12 minimal, premiere visibilite runtime.
+1. ouvrir le pipeline visuel crowd-first:
+   extraction de frame, DX12 minimal, premiere visibilite runtime;
+2. rendre la foule visible a l'ecran:
+   rendu crowd-first, batching, premiers LOD visuels;
+3. poursuivre le durcissement simulation:
+   avoidance plus credible, replay complet des inputs, telemetry gameplay plus riche.
 
 ## Criteres de pilotage
 

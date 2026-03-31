@@ -257,3 +257,49 @@ Pourquoi:
 - le broadphase ne devait pas remplacer la semantique de ciblage,
 - un multi-hit implicite par voisin aurait cree une derive gameplay non voulue,
 - ce contrat garde le melee simple, deterministe et defendable.
+
+## DL-021 - Hash de simulation par tick comme premiere preuve runtime
+
+Decision:
+
+- chaque tick publie un hash de simulation deterministe,
+- l'etat crowd critique est collecte dans un ordre stable,
+- un historique recent et une comparaison headless sont fournis.
+
+Pourquoi:
+
+- il fallait rendre les divergences visibles avant d'ouvrir le rendu crowd-first,
+- le hash par tick donne une preuve minimale mais exploitable,
+- cela verrouille mieux les regressions runtime.
+
+## DL-022 - Budget contracts explicites au niveau runtime
+
+Decision:
+
+- le runtime publie des contrats de budget par tick,
+- le tick complet, le systeme le plus chaud et quelques compteurs crowd
+  critiques sont evalus explicitement,
+- le resultat est expose dans le snapshot.
+
+Pourquoi:
+
+- la telemetry passive ne suffisait plus,
+- il fallait des violations explicites et comparables,
+- cela prepare une degradation budget-aware propre.
+
+## DL-023 - Reponse budget-aware progressive et reversible
+
+Decision:
+
+- les violations de budget pilotent une premiere degradation automatique du
+  LOD comportemental,
+- la reponse est discrete, avec hysteresis,
+- l'etat applique au tick courant est distingue de l'etat decide pour le
+  tick suivant,
+- toute reconfiguration a chaud est normalisee immediatement.
+
+Pourquoi:
+
+- il fallait commencer a agir sur les budgets, pas seulement les mesurer,
+- la separation `applied` / `pending` evite toute ambiguite de contrat,
+- la normalisation immediate supprime les etats stale dans l'API publique.
