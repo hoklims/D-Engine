@@ -128,3 +128,76 @@ Pourquoi:
 - controle total sur la boucle de messages,
 - zero dependance externe,
 - alignement direct avec le futur swapchain DX12.
+
+## DL-012 - Mutations structurelles differees
+
+Decision:
+
+- les systemes de simulation n'appliquent pas de mutations structurelles
+  directement sur le `World`,
+- ils passent par `WorldView` et `CommandBuffer`.
+
+Pourquoi:
+
+- iteration stable,
+- contrat deterministe,
+- base saine pour la parallelisation future.
+
+## DL-013 - Pipeline de simulation crowd ordonnee
+
+Decision:
+
+- la foule tourne dans une pipeline de systemes fixes a ordre explicite.
+
+Pourquoi:
+
+- lisibilite du contrat de tick,
+- telemetry par systeme,
+- comportement reproductible,
+- evolution plus sure vers budgets et LOD.
+
+## DL-014 - Combat simultane a l'echelle du tick
+
+Decision:
+
+- les attaques produisent des evenements,
+- les degats sont resolus en lot,
+- les morts sont detruites de maniere differee.
+
+Pourquoi:
+
+- independance a l'ordre d'iteration,
+- gameplay plus defendable,
+- contrat `alive-at-tick-start` explicite.
+
+## DL-015 - Navigation battlefield via grille statique
+
+Decision:
+
+- la navigation strategique repose d'abord sur une grille 2D statique avec BFS
+  integration field et flow vectors par equipe.
+
+Pourquoi:
+
+- premier contournement d'obstacles simple et deterministe,
+- meilleur fit crowd-first qu'un pathfinding individuel premature,
+- base extensible pour des flow fields plus riches plus tard.
+
+## DL-016 - Contrat fail-safe de navigation
+
+Decision:
+
+- quand la grille de navigation est active et que `sample_flow()` echoue
+  (agent hors grille, cellule bloquee ou inatteignable), l'agent recoit une
+  direction zero au lieu de tomber en fallback ligne directe vers le goal.
+- les scenes battlefield invalides (grille 0x0, cell size <= 0) retombent
+  sur un bootstrap crowd classique sans navigation.
+
+Pourquoi:
+
+- un fallback silencieux vers la ligne directe permettait de bypasser les
+  obstacles sans aucun signal,
+- direction zero = fail-safe visible et debuggable via telemetrie
+  (`nav_failures_this_tick`),
+- validation de la config empeche les scenes absurdes de produire un
+  comportement imprevisible.

@@ -17,6 +17,31 @@ entre:
 
 Le CPU decide. Le GPU absorbe l'echelle.
 
+## Snapshot actuel
+
+Etat reel de la branche au 2026-03-31:
+
+- runtime Win32 minimal en place,
+- tick fixe, timeline et telemetry CPU en place,
+- ECS archetypal custom en place,
+- `WorldView` et `CommandBuffer` en place,
+- `SimState` orchestre deja une pipeline crowd complete,
+- ciblage nearest-enemy via `SpatialGrid`,
+- navigation strategique via `BattleGoal`,
+- navigation obstacle-aware via `BattlefieldGrid`,
+- separation locale soft en place,
+- combat simultane avec morts differees en place,
+- tests dedies runtime, ECS, crowd et navigation en place.
+
+Ce qui reste hors du code aujourd'hui:
+
+- job system,
+- allocateurs temps reel,
+- replay/hash de simulation,
+- broadphase melee dediee,
+- LOD comportemental,
+- rendu DX12 et extraction de frame crowd-first.
+
 ## Couches
 
 ### Runtime Core
@@ -66,6 +91,31 @@ Responsabilites:
 - overlays de perf.
 
 ## Boucle cible
+
+Boucle actuellement implementee:
+
+1. `begin_frame`,
+2. accumulation fixed-step,
+3. `SimState::tick`,
+4. apply des commandes differees,
+5. snapshot runtime et telemetry,
+6. `render` placeholder,
+7. `end_frame`.
+
+Pipeline crowd actuellement implementee:
+
+1. `SelectTargets`,
+2. `ComputeBattleGoal`,
+3. `ComputeDesiredMove`,
+4. `ApplyCrowdSteer`,
+5. `ApplySeparation`,
+6. `AttackTargets`,
+7. `ResolveDamage`,
+8. `RemoveDead`,
+9. `IntegrateVelocity`,
+10. `IntegratePosition`.
+
+Boucle cible a moyen terme:
 
 1. lire les entrees du tick,
 2. mettre a jour objectifs et flow fields,
@@ -126,15 +176,18 @@ Choix cible:
 
 ### Navigation
 
-- flow fields pour les masses,
-- regles locales pour casser les impasses,
+- `BattlefieldGrid` statique + BFS integration field aujourd'hui,
+- `SpatialGrid` pour le nearest-enemy aujourd'hui,
+- flow fields plus riches pour les masses ensuite,
+- regles locales pour casser les impasses ensuite,
 - officiers et exceptions hors du flux principal si necessaire.
 
 ### Avoidance
 
-- ORCA ou variante compatible budget,
-- voisinage plafonne,
-- precision degressive avec la distance.
+- separation locale soft aujourd'hui,
+- voisinage borne via grille aujourd'hui,
+- ORCA ou variante compatible budget plus tard,
+- precision degressive avec la distance plus tard.
 
 ### Animation
 
@@ -146,9 +199,11 @@ Choix cible:
 
 ### Combat
 
-- capsules et volumes simples,
-- aggregation d'evenements,
-- reaction groupee,
+- selection de cible spatiale aujourd'hui,
+- aggregation d'evenements de degats aujourd'hui,
+- morts differees aujourd'hui,
+- capsules et volumes simples ensuite,
+- reaction groupee ensuite,
 - budget explicite pour la physique spectaculaire.
 
 ## Choix avant-gardistes surveilles

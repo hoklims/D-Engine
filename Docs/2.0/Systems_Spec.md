@@ -5,6 +5,33 @@
 Lister les systemes indispensables de D-Engine 2.0, leur role et leur contrat de
 performance.
 
+## Snapshot implemente au 2026-03-31
+
+Les blocs suivants existent deja dans la branche:
+
+- runtime a tick fixe,
+- `FrameInfo` et `FrameTelemetry`,
+- ECS archetypal custom,
+- `WorldView` + `CommandBuffer`,
+- pipeline ordonnee de systemes fixes,
+- runtime crowd configurable,
+- ciblage spatial via `SpatialGrid`,
+- navigation strategique via `BattleGoal`,
+- navigation obstacle-aware via `BattlefieldGrid`,
+- separation locale soft,
+- combat simultane avec morts differees,
+- tests dedies runtime, ECS, crowd et navigation.
+
+Les blocs suivants restent des cibles, pas encore des realites:
+
+- job system,
+- allocateurs temps reel,
+- replay/hash de simulation,
+- broadphase melee dediee,
+- LOD comportemental,
+- extraction crowd vers le rendu,
+- rendu DX12.
+
 ## 1. Runtime
 
 ### Main Loop
@@ -34,6 +61,10 @@ Contrat:
 - divergence detectee tot,
 - mode debug lisible.
 
+Etat:
+
+- non implemente.
+
 ## 2. ECS
 
 ### Storage
@@ -48,6 +79,10 @@ Contrat:
 - mutations controlees,
 - cout de parcours visible.
 
+Etat:
+
+- implemente.
+
 ### Query Layer
 
 Role:
@@ -58,6 +93,10 @@ Contrat:
 
 - eviter les requetes trop generiques,
 - privilegier les chemins specialises foule.
+
+Etat:
+
+- implemente via `WorldView` + `each<Cs...>()`.
 
 ## 3. Job System
 
@@ -72,6 +111,10 @@ Contrat:
 - sorties indexees de facon stable,
 - dependances explicites,
 - contention minimale.
+
+Etat:
+
+- non implemente.
 
 ## 4. Memory
 
@@ -88,6 +131,10 @@ Contrat:
 - frame arenas par worker,
 - budgets memoire observables.
 
+Etat:
+
+- non implemente en tant que sous-systeme dedie.
+
 ## 5. Navigation de masse
 
 ### Flow Fields
@@ -101,6 +148,13 @@ Contrat:
 - recalculs rares et maitrises,
 - requete agent tres bon marche.
 
+Etat:
+
+- version simple en place via `BattlefieldGrid`,
+- grille statique,
+- BFS uniform-cost,
+- obstacles statiques uniquement.
+
 ### Local Avoidance
 
 Role:
@@ -113,6 +167,12 @@ Contrat:
 - precision plafonnee par budget,
 - cout borne par voisinage,
 - comportement credible en melee.
+
+Etat:
+
+- separation locale soft uniquement,
+- pas encore d'avoidance type ORCA,
+- pas encore de broadphase melee dediee.
 
 ## 6. LOD comportemental
 
@@ -146,6 +206,10 @@ Contrat:
 - cout quasi lineaire,
 - bon comportement en densite forte.
 
+Etat:
+
+- non implemente comme sous-systeme dedie.
+
 ### Hit Resolution
 
 Role:
@@ -158,6 +222,10 @@ Contrat:
 - cout plafonne par tick,
 - priorite au gameplay lisible.
 
+Etat:
+
+- implemente via buffer de hit events puis resolution simultanee.
+
 ### Reaction System
 
 Role:
@@ -168,6 +236,10 @@ Contrat:
 
 - pas de physique libre generalisee,
 - budgets serres pour les cas spectaculaires.
+
+Etat:
+
+- non implemente.
 
 ## 8. Animation
 
@@ -246,6 +318,13 @@ Contrat:
 - histogrammes de frame-time,
 - compteurs par tier de foule,
 - scenes de benchmark figees.
+
+Etat:
+
+- timings CPU runtime et par systeme en place,
+- compteurs crowd de base en place,
+- compteurs navigation de base en place,
+- timings GPU et perf gates non implementes.
 
 ## 11. Budgets structurants
 

@@ -345,6 +345,21 @@ Ordre refuse:
 - Phase 4: vertical slice
 - Phase 5: engineization utile
 
+Checkpoint actuel:
+
+- Phase 0 terminee
+- Phase 1 largement en place
+- Phase 2 en cours avance
+- Phase 3 a 5 non engagees
+
+En clair:
+
+- le moteur headless crowd-first existe deja,
+- la foule sait cibler, se deplacer, se separer, combattre et contourner des
+  obstacles statiques,
+- le rendu crowd-first, le replay complet, les jobs et le LOD comportemental
+  restent devant nous.
+
 -------------------------------------------------------------------------------
 
 ## 14. Definition de reussite
