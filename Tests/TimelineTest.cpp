@@ -23,9 +23,12 @@ struct FakeLoop {
 
     void init(double hz, double max_delta, uint32_t max_steps) {
         fs.init(hz, max_delta, max_steps);
+        info = {};
     }
 
     void frame(double raw_delta) {
+        // Mirrors Engine: begin_frame only pumps clock.
+        // tick_fixed_steps increments frame_index and writes FrameInfo.
         ++info.frame_index;
         info.raw_frame_delta = raw_delta;
 
@@ -119,6 +122,51 @@ static void test_zero_delta_frame() {
     check(loop.info.presentation_alpha == 0.0, "alpha == 0 on zero delta");
 }
 
+static void test_close_before_tick() {
+    // Simulates: begin_frame detects close -> running_ = false -> break.
+    // tick_fixed_steps never runs. FrameInfo must not be updated.
+    FakeLoop loop;
+    loop.init(60.0, 0.25, 8);
+
+    // Run 3 normal frames.
+    loop.frame(1.0 / 60.0);
+    loop.frame(1.0 / 60.0);
+    loop.frame(1.0 / 60.0);
+
+    uint64_t frame_before = loop.info.frame_index;
+    uint64_t tick_before = loop.info.sim_tick_index;
+
+    // Simulate close: do NOT call frame(). Engine breaks before tick_fixed_steps.
+    // FrameInfo must remain unchanged.
+    check(loop.info.frame_index == frame_before, "frame_index unchanged after close");
+    check(loop.info.sim_tick_index == tick_before, "tick_index unchanged after close");
+}
+
+static void test_reinit_resets_counters() {
+    FakeLoop loop;
+    loop.init(60.0, 0.25, 8);
+
+    loop.frame(1.0 / 60.0);
+    loop.frame(1.0 / 60.0);
+    check(loop.info.frame_index == 2, "frame_index == 2 before reinit");
+    check(loop.info.sim_tick_index == 2, "tick_index == 2 before reinit");
+
+    // Reinit: mirrors Engine::init() resetting frame_info_.
+    loop.init(60.0, 0.25, 8);
+    check(loop.info.frame_index == 0, "frame_index == 0 after reinit");
+    check(loop.info.sim_tick_index == 0, "tick_index == 0 after reinit");
+    check(loop.info.steps_this_frame == 0, "steps_this_frame == 0 after reinit");
+    check(loop.info.step_cap_hit == false, "step_cap_hit == false after reinit");
+    check(loop.info.raw_frame_delta == 0.0, "raw_frame_delta == 0 after reinit");
+    check(loop.info.clamped_frame_delta == 0.0, "clamped_frame_delta == 0 after reinit");
+    check(loop.info.presentation_alpha == 0.0, "alpha == 0 after reinit");
+
+    // First frame after reinit starts at 1.
+    loop.frame(1.0 / 60.0);
+    check(loop.info.frame_index == 1, "frame_index == 1 after reinit + 1 frame");
+    check(loop.info.sim_tick_index == 1, "tick_index == 1 after reinit + 1 frame");
+}
+
 int main() {
     test_frame_index_increments();
     test_tick_index_increments();
@@ -126,6 +174,8 @@ int main() {
     test_step_cap_hit_flag();
     test_alpha_coherence();
     test_zero_delta_frame();
+    test_close_before_tick();
+    test_reinit_resets_counters();
 
     std::printf("\nResults: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail > 0 ? 1 : 0;

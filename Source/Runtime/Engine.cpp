@@ -23,6 +23,7 @@ bool Engine::init(const EngineConfig& cfg) {
         return false;
     }
 
+    frame_info_ = {};
     running_ = true;
     return true;
 }
@@ -51,12 +52,12 @@ void Engine::begin_frame() {
     if (!window_.pump_messages()) {
         running_ = false;
     }
-
-    ++frame_info_.frame_index;
-    frame_info_.raw_frame_delta = clock_.delta_seconds();
 }
 
 void Engine::tick_fixed_steps() {
+    ++frame_info_.frame_index;
+    frame_info_.raw_frame_delta = clock_.delta_seconds();
+
     FixedStepResult result = fixed_step_.consume(frame_info_.raw_frame_delta);
 
     frame_info_.clamped_frame_delta = result.clamped_delta;
