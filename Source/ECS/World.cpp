@@ -1,6 +1,7 @@
 #include "ECS/World.h"
 
 #include <algorithm>
+#include <cassert>
 
 namespace de {
 
@@ -8,7 +9,12 @@ namespace de {
 //  Entity lifecycle
 // -----------------------------------------------------------------
 
+bool World::is_iterating() const {
+    return iterating_ > 0;
+}
+
 EntityId World::create() {
+    assert(!is_iterating() && "structural mutation during iteration");
     EntityId id = pool_.create();
 
     // ensure records_ is large enough
@@ -30,6 +36,7 @@ EntityId World::create() {
 }
 
 void World::destroy(EntityId id) {
+    assert(!is_iterating() && "structural mutation during iteration");
     if (!alive(id)) return;
 
     auto& rec  = record_of(id);
@@ -94,6 +101,7 @@ uint32_t World::find_or_create_archetype(
 }
 
 void World::move_entity(EntityId id, uint32_t dst_idx) {
+    assert(!is_iterating() && "structural mutation during iteration");
     auto& rec      = record_of(id);
     auto& src_arch = archetypes_[rec.archetype];
     auto& dst_arch = archetypes_[dst_idx];

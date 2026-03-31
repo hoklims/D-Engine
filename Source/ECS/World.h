@@ -48,6 +48,11 @@ struct World {
 
     uint32_t entity_count() const;
 
+    // Returns true if an each() iteration is in progress.
+    // Structural mutations (create/destroy/set-new-type/remove) assert
+    // on this in Debug builds.
+    bool is_iterating() const;
+
 private:
     // Location of an entity inside an archetype
     struct Record {
@@ -60,6 +65,8 @@ private:
     std::vector<Archetype> archetypes_;
 
     // --- internal helpers ------------------------------------------------
+    uint32_t iterating_ = 0;
+
     Archetype&  archetype_of(EntityId id);
     Record&     record_of(EntityId id);
     uint32_t    find_or_create_archetype(const std::vector<ComponentInfo>& infos);
@@ -163,8 +170,7 @@ const T* World::get(EntityId id) const {
 
 template <typename... Cs, typename F>
 void World::each(F&& func) {
-    // For each archetype, check if it contains ALL requested components.
-    // If yes, iterate its rows and call func with typed pointers.
+    ++iterating_;
     for (auto& arch : archetypes_) {
         if (arch.count == 0) continue;
 
@@ -190,6 +196,7 @@ void World::each(F&& func) {
                  std::get<Cs*>(bases)[row]...);
         }
     }
+    --iterating_;
 }
 
 }  // namespace de

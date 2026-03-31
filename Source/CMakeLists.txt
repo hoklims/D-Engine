@@ -31,5 +31,6 @@ add_library(DEcs STATIC
     ECS/Archetype.cpp
     ECS/World.h
     ECS/World.cpp
+    ECS/WorldView.h
 )
 target_include_directories(DEcs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

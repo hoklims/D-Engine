@@ -340,10 +340,9 @@ static void test_telemetry_entity_count_varies() {
 //  Test systems for deferred command testing
 // =================================================================
 
-// Queues destroy for every entity with Position.x > 25.
-static uint32_t destroy_high_x(de::World& world, float, de::CommandBuffer& cmds) {
+static uint32_t destroy_high_x(de::WorldView& view, float, de::CommandBuffer& cmds) {
     uint32_t count = 0;
-    world.each<de::Position>([&](de::EntityId id, de::Position& p) {
+    view.each<de::Position>([&](de::EntityId id, de::Position& p) {
         ++count;
         if (p.x > 25.0f) {
             cmds.destroy(id);
@@ -352,10 +351,9 @@ static uint32_t destroy_high_x(de::World& world, float, de::CommandBuffer& cmds)
     return count;
 }
 
-// Spawns one entity at Position(100, 0).
-static uint32_t spawn_one(de::World& world, float, de::CommandBuffer& cmds) {
+static uint32_t spawn_one(de::WorldView& view, float, de::CommandBuffer& cmds) {
     uint32_t count = 0;
-    world.each<de::Position>([&](de::EntityId, de::Position&) { ++count; });
+    view.each<de::Position>([&](de::EntityId, de::Position&) { ++count; });
     cmds.spawn([](de::World& w, de::EntityId e) {
         w.set(e, de::Position{100.0f, 0.0f});
         w.set(e, de::Velocity{0.0f, 0.0f});
@@ -364,12 +362,11 @@ static uint32_t spawn_one(de::World& world, float, de::CommandBuffer& cmds) {
     return count;
 }
 
-// Counts entities and stores in a global for external verification.
 static uint32_t g_count_seen = 0;
 
-static uint32_t count_only(de::World& world, float, de::CommandBuffer&) {
+static uint32_t count_only(de::WorldView& view, float, de::CommandBuffer&) {
     uint32_t count = 0;
-    world.each<de::Position>([&](de::EntityId, de::Position&) { ++count; });
+    view.each<de::Position>([&](de::EntityId, de::Position&) { ++count; });
     g_count_seen = count;
     return count;
 }
@@ -380,12 +377,10 @@ static uint32_t count_only(de::World& world, float, de::CommandBuffer&) {
 
 static void test_deferred_destroy() {
     de::SimState sim;
-    sim.bootstrap();  // pos.x = 0, 10, 20, 30
+    sim.bootstrap();
     sim.add_system("DestroyHighX", destroy_high_x);
 
     sim.tick(1.0);
-    // After integration: pos.x = 1, 11, 21, 31
-    // DestroyHighX queues destroy for x=31.  Apply removes it.
 
     check(sim.world.entity_count() == 3,
           "deferred_destroy: 3 entities remain");
@@ -431,8 +426,6 @@ static void test_no_invalidation_during_iteration() {
     g_count_seen = 0;
     sim.tick(1.0);
 
-    // CountAfter runs AFTER DestroyHighX.
-    // Destroy is deferred, so CountAfter still sees all 4 entities.
     check(g_count_seen == 4,
           "no_invalidation: later system still sees 4 (destroy not applied yet)");
     check(sim.world.entity_count() == 3,
@@ -452,8 +445,6 @@ static void test_deterministic_apply() {
     g_count_seen = 0;
     sim.tick(1.0);
 
-    // SpawnOne queues a spawn.  CountAfter runs after, should see
-    // the original 4 (spawn not applied until end of tick).
     check(g_count_seen == 4,
           "deterministic: CountAfter sees 4 (spawn not applied yet)");
     check(sim.world.entity_count() == 5,
@@ -473,10 +464,8 @@ static void test_snapshot_cmd_stats() {
     sim.tick(1.0);
 
     de::SimSnapshot snap = sim.snapshot();
-    // DestroyHighX queues 1 destroy, SpawnOne queues 1 spawn = 2 total
     check(snap.cmds_queued == 2, "cmd_stats: 2 commands queued");
     check(snap.cmds_applied == 2, "cmd_stats: 2 commands applied");
-    // 4 - 1 + 1 = 4
     check(snap.entity_count == 4, "cmd_stats: entity_count == 4");
 }
 
@@ -493,6 +482,78 @@ static void test_no_commands_baseline() {
     de::SimSnapshot snap = sim.snapshot();
     check(snap.cmds_queued == 0, "baseline: 0 commands queued");
     check(snap.cmds_applied == 0, "baseline: 0 commands applied");
+}
+
+// =================================================================
+//  WorldView: read/write component data, no structural API
+// =================================================================
+
+static void test_worldview_read_write() {
+    de::World world;
+    de::EntityId e = world.create();
+    world.set(e, de::Position{5.0f, 10.0f});
+    world.set(e, de::Velocity{1.0f, 2.0f});
+
+    de::WorldView view(world);
+
+    check(view.alive(e), "worldview: alive");
+    check(view.has<de::Position>(e), "worldview: has Position");
+    check(view.entity_count() == 1, "worldview: entity_count == 1");
+
+    auto* p = view.get<de::Position>(e);
+    check(p != nullptr && approx(p->x, 5.0f), "worldview: get Position");
+
+    // Write through view (component data, not structural)
+    p->x = 99.0f;
+    check(approx(world.get<de::Position>(e)->x, 99.0f),
+          "worldview: data write propagates to World");
+
+    // Iterate through view
+    int count = 0;
+    view.each<de::Position>([&](de::EntityId, de::Position&) { ++count; });
+    check(count == 1, "worldview: each iterates 1 entity");
+
+    // WorldView does NOT expose create(), destroy(), set(), remove().
+    // This is enforced at compile time -- no runtime test needed.
+}
+
+// =================================================================
+//  Iteration guard: World.is_iterating() tracks each() scope
+// =================================================================
+
+static void test_iterating_guard() {
+    de::World world;
+    de::EntityId e = world.create();
+    world.set(e, de::Position{1.0f, 2.0f});
+
+    check(!world.is_iterating(), "guard: not iterating before each");
+
+    bool was_iterating = false;
+    world.each<de::Position>([&](de::EntityId, de::Position&) {
+        was_iterating = world.is_iterating();
+    });
+
+    check(was_iterating, "guard: is_iterating == true during each callback");
+    check(!world.is_iterating(), "guard: not iterating after each");
+}
+
+// =================================================================
+//  Iteration guard works through WorldView too
+// =================================================================
+
+static void test_iterating_guard_via_view() {
+    de::World world;
+    de::EntityId e = world.create();
+    world.set(e, de::Position{1.0f, 2.0f});
+    de::WorldView view(world);
+
+    bool was_iterating = false;
+    view.each<de::Position>([&](de::EntityId, de::Position&) {
+        was_iterating = world.is_iterating();
+    });
+
+    check(was_iterating,
+          "guard_view: is_iterating == true during WorldView.each");
 }
 
 // =================================================================
@@ -528,6 +589,11 @@ int main() {
     test_deterministic_apply();
     test_snapshot_cmd_stats();
     test_no_commands_baseline();
+
+    // Enforcement: WorldView + iteration guard
+    test_worldview_read_write();
+    test_iterating_guard();
+    test_iterating_guard_via_view();
 
     std::printf("\nRuntimeEcsTest results: %d passed, %d failed\n",
                 g_pass, g_fail);

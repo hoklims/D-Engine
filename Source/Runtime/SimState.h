@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ECS/World.h"
+#include "ECS/WorldView.h"
 #include "Runtime/CommandBuffer.h"
 #include "Runtime/Components.h"
 
@@ -8,13 +9,14 @@
 
 namespace de {
 
-static constexpr uint32_t k_max_sim_systems = 8;
+static constexpr uint32_t k_max_sim_systems  = 8;
+static constexpr uint32_t k_system_name_max  = 32;
 
 // Per-system telemetry from the last tick.
 struct SystemStats {
-    const char*  name               = "";
-    double       elapsed_s          = 0.0;
-    uint32_t     entities_processed = 0;
+    char         name[k_system_name_max] = {};
+    double       elapsed_s               = 0.0;
+    uint32_t     entities_processed      = 0;
 };
 
 // Debug snapshot of the simulation pipeline.
@@ -28,18 +30,21 @@ struct SimSnapshot {
 };
 
 // Signature for a fixed-step simulation system.
-// Systems receive a read/write World reference for component data,
-// the timestep, and a CommandBuffer for deferred structural mutations.
-// Returns the number of entities processed.
 //
-// Contract: systems MUST NOT call create/destroy/set(new type)/remove
-// on the World directly.  Structural changes go through CommandBuffer.
-using FixedSystemFn = uint32_t(*)(World& world, float dt, CommandBuffer& cmds);
+// Systems receive a WorldView (read/write component data only, no
+// structural mutation) the timestep, and a CommandBuffer for deferred
+// structural mutations.  Returns the number of entities processed.
+//
+// Contract enforced at compile time: WorldView does not expose
+// create/destroy/set/remove.  World also asserts in Debug if a
+// structural mutation is attempted during each() iteration.
+using FixedSystemFn = uint32_t(*)(WorldView& view, float dt, CommandBuffer& cmds);
 
 // A named system in the fixed-step pipeline.
+// Name is owned (copied at registration) -- no dangling pointer risk.
 struct FixedSystem {
-    const char*   name = "";
-    FixedSystemFn fn   = nullptr;
+    char          name[k_system_name_max] = {};
+    FixedSystemFn fn                      = nullptr;
 };
 
 // Owns a World and runs an ordered pipeline of fixed systems each tick.
@@ -51,9 +56,10 @@ struct FixedSystem {
 //
 // Tick flow:
 //   1. Clear command buffer
-//   2. Run all systems in order (they queue deferred commands)
-//   3. Apply all deferred commands at once (spawns first, then destroys)
-//   4. Increment tick_count
+//   2. Create a WorldView over the world
+//   3. Run all systems in order (they receive WorldView&, queue deferred commands)
+//   4. Apply all deferred commands at once (spawns first, then destroys)
+//   5. Increment tick_count
 struct SimState {
     World world;
 

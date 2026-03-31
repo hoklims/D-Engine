@@ -1,14 +1,16 @@
 #include "Runtime/SimState.h"
 
 #include <chrono>
+#include <cstdio>
+#include <cstring>
 
 namespace de {
 
 // -- Fixed systems -----------------------------------------------------------
 
-static uint32_t integrate_velocity(World& world, float dt, CommandBuffer&) {
+static uint32_t integrate_velocity(WorldView& view, float dt, CommandBuffer&) {
     uint32_t count = 0;
-    world.each<Velocity, Acceleration>(
+    view.each<Velocity, Acceleration>(
         [dt, &count](EntityId, Velocity& v, Acceleration& a) {
             v.dx += a.ax * dt;
             v.dy += a.ay * dt;
@@ -17,9 +19,9 @@ static uint32_t integrate_velocity(World& world, float dt, CommandBuffer&) {
     return count;
 }
 
-static uint32_t integrate_position(World& world, float dt, CommandBuffer&) {
+static uint32_t integrate_position(WorldView& view, float dt, CommandBuffer&) {
     uint32_t count = 0;
-    world.each<Position, Velocity>(
+    view.each<Position, Velocity>(
         [dt, &count](EntityId, Position& p, Velocity& v) {
             p.x += v.dx * dt;
             p.y += v.dy * dt;
@@ -54,12 +56,14 @@ void SimState::tick(double step_dt) {
     float dt = static_cast<float>(step_dt);
     cmds_.clear();
 
+    WorldView view(world);
+
     for (uint32_t i = 0; i < system_count_; ++i) {
         auto t0 = std::chrono::high_resolution_clock::now();
-        uint32_t n = pipeline_[i].fn(world, dt, cmds_);
+        uint32_t n = pipeline_[i].fn(view, dt, cmds_);
         auto t1 = std::chrono::high_resolution_clock::now();
 
-        last_stats_[i].name = pipeline_[i].name;
+        std::memcpy(last_stats_[i].name, pipeline_[i].name, k_system_name_max);
         last_stats_[i].elapsed_s =
             std::chrono::duration<double>(t1 - t0).count();
         last_stats_[i].entities_processed = n;
@@ -106,7 +110,9 @@ void SimState::register_systems() {
 
 void SimState::add_system(const char* name, FixedSystemFn fn) {
     if (system_count_ >= k_max_sim_systems) return;
-    pipeline_[system_count_] = {name, fn};
+    auto& sys = pipeline_[system_count_];
+    std::snprintf(sys.name, k_system_name_max, "%s", name);
+    sys.fn = fn;
     ++system_count_;
 }
 
