@@ -28,13 +28,21 @@ bool Engine::init(const EngineConfig& cfg) {
     telemetry_ = {};
     wip_telemetry_ = {};
     render_frame_ = {};
-    sim_.bootstrap();
 
-    renderer_ = new Renderer();
-    renderer_active_ = renderer_->init(window_.handle(), window_.width(), window_.height());
-    if (!renderer_active_) {
-        delete renderer_;
-        renderer_ = nullptr;
+    switch (config_.start_scene) {
+    case StartScene::Battlefield: sim_.bootstrap_battlefield({}); break;
+    case StartScene::Basic:       sim_.bootstrap();               break;
+    case StartScene::Crowd:       // fall-through
+    default:                      sim_.bootstrap_crowd();         break;
+    }
+
+    if (config_.enable_renderer) {
+        renderer_ = new Renderer();
+        renderer_active_ = renderer_->init(window_.handle(), window_.width(), window_.height());
+        if (!renderer_active_) {
+            delete renderer_;
+            renderer_ = nullptr;
+        }
     }
 
     running_ = true;
@@ -131,10 +139,8 @@ void Engine::update_fixed(double step_dt) {
 
 void Engine::update_presentation(double alpha) {
     (void)alpha;
-    if (renderer_active_) {
-        extract_render_frame(sim_.world, frame_info_.sim_tick_index,
-                             frame_info_.frame_index, render_frame_);
-    }
+    extract_render_frame(sim_.world, frame_info_.sim_tick_index,
+                         frame_info_.frame_index, render_frame_);
 }
 
 void Engine::render() {

@@ -106,3 +106,13 @@ add_executable(RenderFrameTest
 target_link_libraries(RenderFrameTest PRIVATE DEcs)
 target_include_directories(RenderFrameTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
 add_test(NAME RenderFrameTest COMMAND RenderFrameTest)
+
+add_executable(EngineBootTest
+    EngineBootTest.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/RenderFrame.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/SimState.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/CrowdSystems.cpp
+)
+target_link_libraries(EngineBootTest PRIVATE DEcs)
+target_include_directories(EngineBootTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
+add_test(NAME EngineBootTest COMMAND EngineBootTest)
