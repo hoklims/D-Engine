@@ -38,6 +38,8 @@ add_executable(DEngine WIN32
     Render/BitmapFont.h
     Render/DebugOverlay.h
     Render/DebugOverlay.cpp
+    Render/DebugHud.h
+    Render/DebugHud.cpp
 )
 
 target_include_directories(DEngine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

@@ -24,6 +24,8 @@ bool Engine::init(const EngineConfig& cfg) {
     culled_frame_ = {};
     render_stats_ = {};
     overlay_data_ = {};
+    hud_data_ = {};
+    hud_mode_ = HudMode::Full;
     overlay_count_ = 0;
     debug_ = {};
     current_preset_ = -1;
@@ -117,6 +119,8 @@ void Engine::shutdown() {
     window_.destroy();
     render_stats_ = {};
     overlay_data_ = {};
+    hud_data_ = {};
+    hud_mode_ = HudMode::Full;
     overlay_count_ = 0;
     debug_ = {};
     current_preset_ = -1;
@@ -149,6 +153,14 @@ const RenderStats& Engine::render_stats() const {
 
 const DebugOverlayData& Engine::debug_overlay() const {
     return overlay_data_;
+}
+
+const DebugHudData& Engine::debug_hud() const {
+    return hud_data_;
+}
+
+HudMode Engine::hud_mode() const {
+    return hud_mode_;
 }
 
 const DebugControls& Engine::debug_controls() const {
@@ -193,6 +205,11 @@ void Engine::process_debug_input() {
         case '3':  action.switch_preset     = 2;    break; // WallGap
         case '4':  action.switch_preset     = 3;    break; // SparseApproach
         case 'F':  action.toggle_auto_frame = true;  break;
+        case 'H':  hud_mode_ = toggle_hud_visibility(hud_mode_); break;
+        case 0x09: // VK_TAB
+            if (hud_mode_ != HudMode::Hidden)
+                hud_mode_ = next_hud_mode(hud_mode_);
+            break;
         default: break;
         }
     }
@@ -380,7 +397,30 @@ void Engine::render() {
     uint32_t culled    = extracted - visible;
     uint32_t drop_cap  = render_frame_.agent_count - extracted;
 
-    // Overlay with honest counters from the current frame.
+    // Structured HUD extraction + instance generation.
+    extract_debug_hud(
+        hud_mode_,
+        current_scene_label(),
+        debug_.paused,
+        frame_info_.sim_tick_index,
+        debug_.auto_frame,
+        render_frame_.agent_count,
+        render_frame_.extracted_count,
+        visible,
+        culled,
+        drop_cap,
+        !renderer_active_,
+        sim_.budget_status().within_budget,
+        telemetry_.total_frame_s * 1000.0,
+        telemetry_.fixed_update_s * 1000.0,
+        hud_data_);
+    overlay_count_ = generate_hud_instances(
+        hud_data_,
+        static_cast<float>(window_.width()),
+        static_cast<float>(window_.height()),
+        overlay_instances_, k_max_overlay_instances);
+
+    // Backward compat: keep flat overlay populated for test accessor.
     extract_debug_overlay(
         current_scene_label(),
         debug_.paused,
@@ -392,11 +432,6 @@ void Engine::render() {
         !renderer_active_,
         sim_.budget_status().within_budget,
         overlay_data_);
-    overlay_count_ = generate_overlay_instances(
-        overlay_data_,
-        static_cast<float>(window_.width()),
-        static_cast<float>(window_.height()),
-        overlay_instances_, k_max_overlay_instances);
 
     if (renderer_active_) {
         if (!renderer_->resize(window_.width(), window_.height())) {

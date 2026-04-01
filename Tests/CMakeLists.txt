@@ -156,6 +156,7 @@ add_executable(RenderStatsTest
     ${CMAKE_SOURCE_DIR}/Source/Render/Renderer.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/WorldDebugPass.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/DebugOverlay.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/DebugHud.cpp
     ${CMAKE_SOURCE_DIR}/Source/Platform/Window.cpp
 )
 target_link_libraries(RenderStatsTest PRIVATE DEcs d3d12 dxgi d3dcompiler)
@@ -176,6 +177,14 @@ add_executable(DebugOverlayTest
 target_include_directories(DebugOverlayTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
 add_test(NAME DebugOverlayTest COMMAND DebugOverlayTest)
 
+add_executable(DebugHudTest
+    DebugHudTest.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/DebugHud.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/DebugOverlay.cpp
+)
+target_include_directories(DebugHudTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
+add_test(NAME DebugHudTest COMMAND DebugHudTest)
+
 add_executable(DemoPresetTest
     DemoPresetTest.cpp
     ${CMAKE_SOURCE_DIR}/Source/Runtime/Engine.cpp
@@ -191,6 +200,7 @@ add_executable(DemoPresetTest
     ${CMAKE_SOURCE_DIR}/Source/Render/Renderer.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/WorldDebugPass.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/DebugOverlay.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/DebugHud.cpp
     ${CMAKE_SOURCE_DIR}/Source/Platform/Window.cpp
 )
 target_link_libraries(DemoPresetTest PRIVATE DEcs d3d12 dxgi d3dcompiler)
@@ -238,6 +248,7 @@ add_executable(EngineRuntimeTest
     ${CMAKE_SOURCE_DIR}/Source/Render/Renderer.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/WorldDebugPass.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/DebugOverlay.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/DebugHud.cpp
     ${CMAKE_SOURCE_DIR}/Source/Platform/Window.cpp
 )
 target_link_libraries(EngineRuntimeTest PRIVATE DEcs d3d12 dxgi d3dcompiler)

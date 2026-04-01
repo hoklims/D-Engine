@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Platform/Window.h"
+#include "Render/DebugHud.h"
 #include "Render/DebugOverlay.h"
 #include "Render/RenderCamera.h"
 #include "Render/RenderFrame.h"
@@ -34,6 +35,8 @@ struct Engine {
     const RenderCamera& render_camera() const;
     const RenderStats& render_stats() const;
     const DebugOverlayData& debug_overlay() const;
+    const DebugHudData& debug_hud() const;
+    HudMode hud_mode() const;
     const DebugControls& debug_controls() const;
     DebugControls& debug_controls_mut();
     const FixedStep& fixed_step() const;
@@ -61,6 +64,8 @@ private:
     WorldDebugConfig world_debug_config_;
     WorldDebugData world_debug_data_;
     DebugOverlayData overlay_data_;
+    DebugHudData hud_data_;
+    HudMode hud_mode_ = HudMode::Full;
     OverlayInstance overlay_instances_[k_max_overlay_instances] = {};
     uint32_t overlay_count_ = 0;
     DebugControls debug_;

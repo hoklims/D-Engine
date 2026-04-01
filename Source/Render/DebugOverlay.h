@@ -5,7 +5,7 @@
 namespace de {
 
 // Maximum pixel-quad instances for the overlay pass.
-static constexpr uint32_t k_max_overlay_instances = 2048;
+static constexpr uint32_t k_max_overlay_instances = 4096;
 
 // CPU-side instance data for overlay quads.
 // Layout matches InstanceData in Renderer.cpp (pos, half_size, color, dir).

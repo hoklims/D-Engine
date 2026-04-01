@@ -41,7 +41,7 @@ cmake --build Build --config Debug --target EcsTest && ./Build/Tests/Debug/EcsTe
 ./Build/Source/Debug/DEngine.exe
 ```
 
-Tests disponibles : `FixedStepTest`, `TimelineTest`, `TelemetryTest`, `EcsTest`, `RuntimeEcsTest`, `CrowdTest`, `NavTest`, `LodTest`, `MeleeTest`, `SimHashTest`, `RenderFrameTest`, `EngineBootTest`, `EngineRuntimeTest`, `DebugOverlayTest`, `AvoidanceTest`, `BenchmarkTest`.
+Tests disponibles : `FixedStepTest`, `TimelineTest`, `TelemetryTest`, `EcsTest`, `RuntimeEcsTest`, `CrowdTest`, `NavTest`, `LodTest`, `MeleeTest`, `SimHashTest`, `RenderFrameTest`, `EngineBootTest`, `EngineRuntimeTest`, `DebugOverlayTest`, `AvoidanceTest`, `BenchmarkTest`, `BudgetTest`, `BudgetResponseTest`, `CameraTest`, `CullingTest`, `DebugControlsTest`, `DemoPresetTest`, `InstanceTest`, `RenderStatsTest`, `WorldDebugTest`, `DebugHudTest`.
 
 ## Conventions code
 - `/W4 /WX /permissive-` -- zero warnings obligatoire
@@ -121,6 +121,12 @@ ECS archetypal avec stockage SoA (Structure of Arrays). Aucune dependance Win32.
 - Crowd : `CrowdAgent` (tag), `Team`, `MoveSpeed`, `Target`, `DesiredDirection`, `Health`, `AttackRange`, `AttackDamage`, `AttackCooldown`, `BattleGoal`, `EngageRadius`, `Separation`, `LocalAvoidance`, `BehaviorLod`
 - Config : `BehaviorLodConfig` (seuils LOD + battle center)
 
+**DemoPresets** : scenes crowd preconfigurees (small skirmish, shield wall, etc.). Chaque preset definit spawn counts, positions, configs.
+
+**DebugControls** : pause/resume, step-by-step, preset switching. Gere l'etat debug du runtime (paused, step_once, current_preset).
+
+**Benchmark** : harness de benchmark headless avec stress presets. Mesure frame budget, tick timing, agent throughput. Resultats comparables.
+
 ### Render (Source/Render/)
 
 **Frame extraction** :
@@ -157,6 +163,14 @@ ECS archetypal avec stockage SoA (Structure of Arrays). Aucune dependance Win32.
 - `draw_call_count` = total reel GPU (world + crowd + overlay).
 - `overlay_draw_call_count` : 0 ou 1 selon presence overlay.
 - Invariant : `draw_call_count == world_draw_call_count + overlay_draw_call_count + (instance_count > 0 ? 1 : 0)`.
+
+**RenderCamera** : camera orthographique centree. Matrice view-projection generee a partir de demi-largeur et aspect ratio. Utilisee par le renderer et le culling.
+
+**ViewCulling** : frustum culling CPU en espace ortho. Filtre les CrowdRenderItem hors du viewport avant soumission GPU. Applique cote render uniquement (ne modifie pas la RenderFrame).
+
+**WorldDebugPass** : rendu de la grille de debug world (battlefield grid, axes). Pass separee avant crowd et overlay.
+
+**DebugHud** : HUD debug structure multi-section. `DebugHudData` avec sections titrees (Runtime, Crowd, Budget, Controls). Trois modes : `Hidden`, `Compact` (1 panneau condense), `Full` (4 panneaux). Toggle H=show/hide, Tab=compact/full. Genere des pixel-quads via `generate_hud_instances()`. Titres en ambre, contenu en vert, fond sombre par panneau.
 
 **Integration Engine** :
 - `update_presentation()` extrait la RenderFrame.
