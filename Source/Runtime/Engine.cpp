@@ -127,6 +127,10 @@ const RenderStats& Engine::render_stats() const {
     return render_stats_;
 }
 
+const DebugOverlayData& Engine::debug_overlay() const {
+    return overlay_data_;
+}
+
 const DebugControls& Engine::debug_controls() const {
     return debug_;
 }
@@ -310,15 +314,17 @@ void Engine::update_presentation(double alpha) {
 void Engine::render() {
     ScopeTimer t(&wip_telemetry_.render_s);
 
-    // Extract overlay data (uses previous frame's render_stats_).
+    // Extract overlay data from current-frame sources only.
+    // Drawn/dropped come from RenderFrame (extraction cap), not from
+    // render_stats_ which would lag by one frame.
     extract_debug_overlay(
         scene_name(config_.start_scene),
         debug_.paused,
         frame_info_.sim_tick_index,
         render_frame_.agent_count,
-        render_stats_.instance_count,
-        render_stats_.dropped_count,
-        render_stats_.frame_skipped,
+        render_frame_.extracted_count,
+        render_frame_.agent_count - render_frame_.extracted_count,
+        !renderer_active_,
         sim_.budget_status().within_budget,
         overlay_data_);
     overlay_count_ = generate_overlay_instances(

@@ -423,16 +423,18 @@ void Renderer::render(const RenderFrame& frame, const RenderCamera& camera,
         overlay_used = lim;
     }
 
-    // -- Update stats (overlay excluded -- debug only). --------------
+    // -- Update stats. -----------------------------------------------
 
-    stats_.agent_count            = frame.agent_count;
-    stats_.extracted_count        = frame.extracted_count;
-    stats_.instance_count         = crowd_count;
-    stats_.draw_call_count        = (crowd_count > 0 ? 1u : 0u)
-                                  + (world_count > 0 ? 1u : 0u);
-    stats_.dropped_count          = frame.agent_count - crowd_count;
-    stats_.world_draw_call_count  = (world_count > 0) ? 1u : 0u;
-    stats_.frame_skipped          = false;
+    stats_.agent_count             = frame.agent_count;
+    stats_.extracted_count         = frame.extracted_count;
+    stats_.instance_count          = crowd_count;
+    stats_.dropped_count           = frame.agent_count - crowd_count;
+    stats_.world_draw_call_count   = (world_count > 0) ? 1u : 0u;
+    stats_.overlay_draw_call_count = (overlay_used > 0) ? 1u : 0u;
+    stats_.draw_call_count         = stats_.world_draw_call_count
+                                   + (crowd_count > 0 ? 1u : 0u)
+                                   + stats_.overlay_draw_call_count;
+    stats_.frame_skipped           = false;
 
     // -- Record command list. ----------------------------------------
 

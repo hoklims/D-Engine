@@ -1,6 +1,7 @@
 #include "Runtime/Engine.h"
 
 #include <cstdio>
+#include <cstring>
 
 static int g_pass = 0;
 static int g_fail = 0;
@@ -32,10 +33,11 @@ static void test_headless_stats_published() {
     check(st.agent_count > 0,        "headless: agent_count > 0");
     check(st.extracted_count > 0,    "headless: extracted_count > 0");
     check(st.instance_count == 0,    "headless: instance_count == 0 (no renderer)");
-    check(st.draw_call_count == 0,   "headless: draw_call_count == 0");
+    check(st.draw_call_count == 0,            "headless: draw_call_count == 0");
+    check(st.overlay_draw_call_count == 0,  "headless: overlay_draw_call_count == 0");
     check(st.dropped_count == st.agent_count,
           "headless: dropped == agent_count (no renderer)");
-    check(!st.frame_skipped,         "headless: frame_skipped == false");
+    check(!st.frame_skipped,                "headless: frame_skipped == false");
 
     engine.shutdown();
 }
@@ -267,10 +269,13 @@ static void test_draw_call_invariant_headless() {
     const auto& st = engine.render_stats();
     // Headless: no draw calls at all.
     uint32_t crowd_dc = (st.instance_count > 0) ? 1u : 0u;
-    check(st.draw_call_count == st.world_draw_call_count + crowd_dc,
-          "dc-inv: draw_call == world + crowd (headless)");
+    check(st.draw_call_count == st.world_draw_call_count + crowd_dc
+                              + st.overlay_draw_call_count,
+          "dc-inv: draw_call == world + crowd + overlay (headless)");
     check(st.world_draw_call_count == 0,
           "dc-inv: world_draw_call == 0 (headless)");
+    check(st.overlay_draw_call_count == 0,
+          "dc-inv: overlay_draw_call == 0 (headless)");
 
     engine.shutdown();
 }
@@ -290,6 +295,101 @@ static void test_draw_call_invariant_empty_headless() {
           "dc-empty: draw_call == 0 (empty headless)");
     check(st.world_draw_call_count == 0,
           "dc-empty: world_draw_call == 0 (empty headless)");
+    check(st.overlay_draw_call_count == 0,
+          "dc-empty: overlay_draw_call == 0 (empty headless)");
+
+    engine.shutdown();
+}
+
+// =================================================================
+//  Overlay data uses current frame, not previous
+// =================================================================
+
+static void test_overlay_current_frame_coherence() {
+    de::EngineConfig cfg;
+    cfg.start_scene     = de::StartScene::Crowd;
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "overlay-coh: init ok");
+
+    // First frame: no previous render_stats_ exist yet.
+    // If the overlay used stale stats, drawn/agent would be 0.
+    engine.step_one_frame();
+
+    const auto& rf = engine.render_frame();
+    const auto& ov = engine.debug_overlay();
+
+    check(rf.agent_count > 0, "overlay-coh: agents exist");
+
+    // Overlay line 3 = "Agents: N"  -- must show current agent_count.
+    char expected_agents[32];
+    std::snprintf(expected_agents, sizeof(expected_agents), "%u",
+                  rf.agent_count);
+    check(std::strstr(ov.lines[3], expected_agents) != nullptr,
+          "overlay-coh: agent_count matches current frame");
+
+    // Overlay line 4 = "Drawn: N  drop:M"  -- must show extracted_count.
+    char expected_drawn[32];
+    std::snprintf(expected_drawn, sizeof(expected_drawn), "%u",
+                  rf.extracted_count);
+    check(std::strstr(ov.lines[4], expected_drawn) != nullptr,
+          "overlay-coh: drawn matches current extracted_count");
+
+    engine.shutdown();
+}
+
+// =================================================================
+//  Overlay: frame_skipped reflects current renderer state
+// =================================================================
+
+static void test_overlay_frame_skipped_current() {
+    de::EngineConfig cfg;
+    cfg.start_scene     = de::StartScene::Crowd;
+    cfg.enable_renderer = false;   // headless = effectively skipped
+
+    de::Engine engine;
+    check(engine.init(cfg), "overlay-skip: init ok");
+
+    engine.step_one_frame();
+
+    const auto& ov = engine.debug_overlay();
+
+    // Headless -> renderer_active_ == false -> frame_skipped = true
+    // in the overlay.  This is current state, not lagged.
+    bool found_skipped = false;
+    for (int i = 0; i < ov.line_count; ++i) {
+        if (std::strstr(ov.lines[i], "SKIPPED")) {
+            found_skipped = true;
+            break;
+        }
+    }
+    check(found_skipped, "overlay-skip: SKIPPED shown in headless mode");
+
+    engine.shutdown();
+}
+
+// =================================================================
+//  draw_call_count invariant across multiple frames
+// =================================================================
+
+static void test_draw_call_invariant_multiframe_headless() {
+    de::EngineConfig cfg;
+    cfg.start_scene     = de::StartScene::Crowd;
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "dc-multi: init ok");
+
+    for (int i = 0; i < 5; ++i) {
+        engine.step_one_frame();
+        const auto& st = engine.render_stats();
+        uint32_t crowd_dc = (st.instance_count > 0) ? 1u : 0u;
+        bool inv = (st.draw_call_count ==
+                    st.world_draw_call_count + crowd_dc
+                  + st.overlay_draw_call_count);
+        check(inv, "dc-multi: invariant holds each frame");
+    }
 
     engine.shutdown();
 }
@@ -307,6 +407,9 @@ int main() {
     test_failed_init_stats_clean();
     test_draw_call_invariant_headless();
     test_draw_call_invariant_empty_headless();
+    test_overlay_current_frame_coherence();
+    test_overlay_frame_skipped_current();
+    test_draw_call_invariant_multiframe_headless();
 
     std::printf("\nRenderStatsTest: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail;

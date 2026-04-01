@@ -138,11 +138,17 @@ ECS archetypal avec stockage SoA (Structure of Arrays). Aucune dependance Win32.
 
 **Debug overlay** :
 - `DebugOverlayData` : lignes de texte extraites du runtime (scene, paused, tick, agents, budget).
-- `extract_debug_overlay()` : remplit DebugOverlayData depuis l'etat Engine.
+- `extract_debug_overlay()` : remplit DebugOverlayData depuis l'etat Engine courant (pas de lag).
 - `BitmapFont.h` : police 5x7 pixels statique (ASCII 32-126, 95 glyphes).
 - `generate_overlay_instances()` : genere des pixel-quads (1 instance par dot allume) + 1 panneau fond.
 - Rendu en 3e pass apres world+crowd, avec matrice ortho screen-space.
 - Cap a k_max_overlay_instances (2048). Pas de texture, reutilise le PSO instancie existant.
+- Contrat overlay : drawn/dropped viennent de `RenderFrame` (extraction), pas des stats renderer.
+
+**RenderStats** :
+- `draw_call_count` = total reel GPU (world + crowd + overlay).
+- `overlay_draw_call_count` : 0 ou 1 selon presence overlay.
+- Invariant : `draw_call_count == world_draw_call_count + overlay_draw_call_count + (instance_count > 0 ? 1 : 0)`.
 
 **Integration Engine** :
 - `update_presentation()` extrait la RenderFrame.

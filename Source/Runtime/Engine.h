@@ -32,6 +32,7 @@ struct Engine {
     const RenderFrame& render_frame() const;
     const RenderCamera& render_camera() const;
     const RenderStats& render_stats() const;
+    const DebugOverlayData& debug_overlay() const;
     const DebugControls& debug_controls() const;
     DebugControls& debug_controls_mut();
     const FixedStep& fixed_step() const;
