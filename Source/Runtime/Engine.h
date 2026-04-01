@@ -38,6 +38,7 @@ struct Engine {
     const FixedStep& fixed_step() const;
     int8_t current_preset() const;
     const char* current_scene_label() const;
+    const WorldDebugConfig& world_debug_config() const;
 
 private:
     EngineConfig config_;

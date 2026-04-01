@@ -26,6 +26,7 @@ bool Engine::init(const EngineConfig& cfg) {
     overlay_count_ = 0;
     debug_ = {};
     current_preset_ = -1;
+    world_debug_config_ = {};
 
     WindowDesc desc;
     desc.title = "D-Engine 2.0";
@@ -117,6 +118,7 @@ void Engine::shutdown() {
     overlay_data_ = {};
     overlay_count_ = 0;
     debug_ = {};
+    current_preset_ = -1;
 }
 
 const FrameInfo& Engine::frame_info() const {
@@ -166,6 +168,10 @@ int8_t Engine::current_preset() const {
 const char* Engine::current_scene_label() const {
     const char* pn = preset_name(current_preset_);
     return pn ? pn : scene_name(config_.start_scene);
+}
+
+const WorldDebugConfig& Engine::world_debug_config() const {
+    return world_debug_config_;
 }
 
 // -- Debug controls -------------------------------------------------
@@ -249,6 +255,8 @@ void Engine::apply_debug_actions() {
         case StartScene::Crowd:
         default:                      sim_.bootstrap_crowd();         break;
         }
+        world_debug_config_ = {};
+        generate_world_debug(world_debug_config_, world_debug_data_);
         frame_info_ = {};
         fixed_step_.reset();
     }

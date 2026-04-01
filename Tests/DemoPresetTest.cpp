@@ -327,6 +327,139 @@ static void test_overlay_shows_preset_name() {
 }
 
 // =================================================================
+//  Lifecycle: current_preset clean after shutdown
+// =================================================================
+
+static void test_current_preset_clean_after_shutdown() {
+    de::EngineConfig cfg;
+    cfg.demo_preset     = 1;  // DenseMelee
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "shut-preset: init ok");
+    check(engine.current_preset() == 1, "shut-preset: preset == 1");
+
+    engine.shutdown();
+    check(engine.current_preset() == -1,
+          "shut-preset: preset == -1 after shutdown");
+}
+
+// =================================================================
+//  Lifecycle: current_scene_label not stale after shutdown
+// =================================================================
+
+static void test_label_not_stale_after_shutdown() {
+    de::EngineConfig cfg;
+    cfg.demo_preset     = 0;  // LaneClash
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "shut-label: init ok");
+    check(std::strcmp(engine.current_scene_label(), "LaneClash") == 0,
+          "shut-label: label == LaneClash before shutdown");
+
+    engine.shutdown();
+    // After shutdown, preset is cleared. Label falls back to start_scene
+    // (default Crowd from EngineConfig).
+    check(std::strcmp(engine.current_scene_label(), "Crowd") == 0,
+          "shut-label: label == Crowd after shutdown (fallback)");
+}
+
+// =================================================================
+//  Lifecycle: reinit from preset to legacy, world debug nominal
+// =================================================================
+
+static void test_reinit_preset_to_legacy_world_debug() {
+    de::EngineConfig cfg;
+    cfg.demo_preset     = 1;  // DenseMelee (extent=30, spacing=5)
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "reinit-wdb: first init ok");
+
+    // Verify preset's world debug config is applied.
+    check(engine.world_debug_config().world_extent == 30.0f,
+          "reinit-wdb: extent == 30 from DenseMelee");
+    check(engine.world_debug_config().grid_spacing == 5.0f,
+          "reinit-wdb: spacing == 5 from DenseMelee");
+
+    engine.shutdown();
+
+    // Re-init with legacy path (no preset).
+    de::EngineConfig cfg2;
+    cfg2.demo_preset     = -1;
+    cfg2.start_scene     = de::StartScene::Crowd;
+    cfg2.enable_renderer = false;
+
+    check(engine.init(cfg2), "reinit-wdb: second init ok");
+
+    // World debug must be nominal (100, 10), not stale from DenseMelee.
+    check(engine.world_debug_config().world_extent == 100.0f,
+          "reinit-wdb: extent == 100 after legacy reinit");
+    check(engine.world_debug_config().grid_spacing == 10.0f,
+          "reinit-wdb: spacing == 10 after legacy reinit");
+
+    engine.shutdown();
+}
+
+// =================================================================
+//  Lifecycle: scene_switch resets world debug after preset
+// =================================================================
+
+static void test_scene_switch_resets_world_debug() {
+    de::EngineConfig cfg;
+    cfg.demo_preset     = 1;  // DenseMelee (extent=30)
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "switch-wdb: init ok");
+    engine.step_one_frame();
+
+    check(engine.world_debug_config().world_extent == 30.0f,
+          "switch-wdb: extent == 30 from DenseMelee");
+
+    // Legacy scene switch to Basic.
+    de::DebugAction sw = {};
+    sw.switch_scene = 0;  // Basic
+    engine.debug_controls_mut().apply(sw);
+    engine.step_one_frame();
+
+    // World debug must be nominal, not stale from DenseMelee.
+    check(engine.world_debug_config().world_extent == 100.0f,
+          "switch-wdb: extent == 100 after scene switch");
+    check(engine.world_debug_config().grid_spacing == 10.0f,
+          "switch-wdb: spacing == 10 after scene switch");
+
+    engine.shutdown();
+}
+
+// =================================================================
+//  Lifecycle: world_debug_config fresh on first init (no stale data)
+// =================================================================
+
+static void test_world_debug_fresh_on_init() {
+    de::EngineConfig cfg;
+    cfg.demo_preset     = -1;
+    cfg.start_scene     = de::StartScene::Basic;
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "fresh-wdb: init ok");
+
+    // Must be nominal defaults.
+    check(engine.world_debug_config().world_extent == 100.0f,
+          "fresh-wdb: extent == 100");
+    check(engine.world_debug_config().grid_spacing == 10.0f,
+          "fresh-wdb: spacing == 10");
+    check(engine.world_debug_config().show_ground,
+          "fresh-wdb: show_ground == true");
+    check(engine.world_debug_config().show_grid,
+          "fresh-wdb: show_grid == true");
+
+    engine.shutdown();
+}
+
+// =================================================================
 
 int main() {
     test_preset_table_valid();
@@ -342,6 +475,11 @@ int main() {
     test_engine_scene_switch_clears_preset();
     test_debug_controls_preset_switch();
     test_overlay_shows_preset_name();
+    test_current_preset_clean_after_shutdown();
+    test_label_not_stale_after_shutdown();
+    test_reinit_preset_to_legacy_world_debug();
+    test_scene_switch_resets_world_debug();
+    test_world_debug_fresh_on_init();
 
     std::printf("\nDemoPresetTest: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail;
