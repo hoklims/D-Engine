@@ -460,6 +460,46 @@ static void test_world_debug_fresh_on_init() {
 }
 
 // =================================================================
+//  Lifecycle: world_debug_config nominal after shutdown
+// =================================================================
+
+static void test_world_debug_clean_after_shutdown() {
+    de::EngineConfig cfg;
+    cfg.demo_preset     = 1;  // DenseMelee (extent=30, spacing=5)
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "shut-wdb: init ok");
+    engine.step_one_frame();
+
+    check(engine.world_debug_config().world_extent == 30.0f,
+          "shut-wdb: extent == 30 while running");
+
+    engine.shutdown();
+
+    // After shutdown, world_debug_config must be nominal.
+    check(engine.world_debug_config().world_extent == 100.0f,
+          "shut-wdb: extent == 100 after shutdown");
+    check(engine.world_debug_config().grid_spacing == 10.0f,
+          "shut-wdb: spacing == 10 after shutdown");
+    check(engine.world_debug_config().show_ground,
+          "shut-wdb: show_ground after shutdown");
+    check(engine.world_debug_config().show_grid,
+          "shut-wdb: show_grid after shutdown");
+
+    // Reinit on a different preset -- must pick up the new config, not stale.
+    cfg.demo_preset = 3;  // SparseApproach (extent=80, spacing=20)
+    check(engine.init(cfg), "shut-wdb: reinit ok");
+
+    check(engine.world_debug_config().world_extent == 80.0f,
+          "shut-wdb: extent == 80 after reinit SparseApproach");
+    check(engine.world_debug_config().grid_spacing == 20.0f,
+          "shut-wdb: spacing == 20 after reinit SparseApproach");
+
+    engine.shutdown();
+}
+
+// =================================================================
 
 int main() {
     test_preset_table_valid();
@@ -480,6 +520,7 @@ int main() {
     test_reinit_preset_to_legacy_world_debug();
     test_scene_switch_resets_world_debug();
     test_world_debug_fresh_on_init();
+    test_world_debug_clean_after_shutdown();
 
     std::printf("\nDemoPresetTest: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail;

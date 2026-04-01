@@ -119,6 +119,7 @@ void Engine::shutdown() {
     overlay_count_ = 0;
     debug_ = {};
     current_preset_ = -1;
+    world_debug_config_ = {};
 }
 
 const FrameInfo& Engine::frame_info() const {
