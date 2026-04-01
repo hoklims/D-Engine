@@ -8,6 +8,10 @@ struct World;
 
 // Per-agent data extracted from the ECS for rendering.
 // Read-only snapshot -- no pointers back to the World.
+// Direction contract:
+//   1. Velocity (if |v| > epsilon)  -- actual movement
+//   2. DesiredDirection (if |dd| > epsilon) -- intent at rest
+//   3. (0,1) -- stable default
 struct CrowdRenderItem {
     float    x          = 0.0f;
     float    y          = 0.0f;
@@ -16,7 +20,7 @@ struct CrowdRenderItem {
     float    health_pct = 1.0f;   // 0.0 - 1.0
     float    dir_x      = 0.0f;   // normalized facing direction
     float    dir_y      = 1.0f;   // (0,1) = default up
-    bool     engaged    = false;  // moving / has intent
+    bool     has_target = false;  // true if agent has a valid pursuit target
 };
 
 static constexpr uint32_t k_max_render_agents = 4096;

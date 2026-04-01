@@ -201,16 +201,16 @@ static void test_extract_direction_after_ticks() {
     de::RenderFrame frame;
     de::extract_render_frame(sim.world, 30, 30, frame);
 
-    // After 30 ticks with close teams, agents should be moving.
-    bool any_engaged = false;
+    // After 30 ticks with close teams, agents should be moving and targeting.
+    bool any_targeted = false;
     bool any_nondefault_dir = false;
     for (uint32_t i = 0; i < frame.extracted_count; ++i) {
         const auto& a = frame.agents[i];
-        if (a.engaged) any_engaged = true;
+        if (a.has_target) any_targeted = true;
         if (a.dir_x != 0.0f || a.dir_y != 1.0f)
             any_nondefault_dir = true;
     }
-    check(any_engaged, "dir-ticks: some agents engaged");
+    check(any_targeted, "dir-ticks: some agents have target");
     check(any_nondefault_dir, "dir-ticks: some agents facing non-default");
 }
 
@@ -256,9 +256,118 @@ static void test_extract_direction_empty() {
 
     check(frame.extracted_count == 0, "dir-empty: no agents");
     // Verify default-initialized items are safe.
-    check(frame.agents[0].dir_x == 0.0f, "dir-empty: default dir_x");
-    check(frame.agents[0].dir_y == 1.0f, "dir-empty: default dir_y");
-    check(!frame.agents[0].engaged,       "dir-empty: default not engaged");
+    check(frame.agents[0].dir_x == 0.0f,    "dir-empty: default dir_x");
+    check(frame.agents[0].dir_y == 1.0f,    "dir-empty: default dir_y");
+    check(!frame.agents[0].has_target,       "dir-empty: default no target");
+}
+
+// =================================================================
+//  DesiredDirection fallback: stationary agent with intent keeps facing
+// =================================================================
+
+static void test_direction_desired_fallback() {
+    de::SimState sim;
+    de::CrowdConfig cfg;
+    cfg.agents_per_team = 1;
+    cfg.team_spacing    = 200.0f;   // far apart = no velocity
+    sim.bootstrap_crowd(cfg);
+
+    // Manually set DesiredDirection on the first agent to a known value.
+    // Velocity stays zero (teams too far apart to move yet at tick 0).
+    uint32_t found = 0;
+    sim.world.each<de::CrowdAgent, de::Velocity, de::DesiredDirection>(
+        [&](de::EntityId, de::CrowdAgent&, de::Velocity& v, de::DesiredDirection& dd) {
+            if (found == 0) {
+                v.dx  = 0.0f;  v.dy  = 0.0f;   // stationary
+                dd.dx = 1.0f;  dd.dy = 0.0f;    // intent: face right
+            }
+            ++found;
+        });
+
+    de::RenderFrame frame;
+    de::extract_render_frame(sim.world, 0, 0, frame);
+
+    // First extracted agent should face right via DesiredDirection fallback.
+    bool ok = false;
+    for (uint32_t i = 0; i < frame.extracted_count; ++i) {
+        const auto& a = frame.agents[i];
+        float dx = a.dir_x - 1.0f;
+        float dy = a.dir_y - 0.0f;
+        if (dx * dx + dy * dy < 0.01f) { ok = true; break; }
+    }
+    check(ok, "dd-fallback: stationary agent faces DesiredDirection");
+}
+
+// =================================================================
+//  has_target reflects Target.has_target, not velocity
+// =================================================================
+
+static void test_has_target_contract() {
+    de::SimState sim;
+    de::CrowdConfig cfg;
+    cfg.agents_per_team = 1;
+    cfg.team_spacing    = 200.0f;
+    sim.bootstrap_crowd(cfg);
+
+    de::RenderFrame frame;
+    de::extract_render_frame(sim.world, 0, 0, frame);
+
+    // At spawn, no targets selected -> all has_target == false.
+    bool none_targeted = true;
+    for (uint32_t i = 0; i < frame.extracted_count; ++i) {
+        if (frame.agents[i].has_target) { none_targeted = false; break; }
+    }
+    check(none_targeted, "target: none at spawn");
+
+    // After ticks with close teams, targets should appear.
+    de::SimState sim2;
+    de::CrowdConfig cfg2;
+    cfg2.agents_per_team = 5;
+    cfg2.team_spacing    = 5.0f;
+    sim2.bootstrap_crowd(cfg2);
+    for (int i = 0; i < 5; ++i)
+        sim2.tick(1.0 / 60.0);
+
+    de::RenderFrame f2;
+    de::extract_render_frame(sim2.world, 5, 5, f2);
+
+    bool any_targeted = false;
+    for (uint32_t i = 0; i < f2.extracted_count; ++i) {
+        if (f2.agents[i].has_target) { any_targeted = true; break; }
+    }
+    check(any_targeted, "target: some targeted after ticks");
+}
+
+// =================================================================
+//  has_target can be true while velocity is zero
+// =================================================================
+
+static void test_target_independent_of_velocity() {
+    de::SimState sim;
+    de::CrowdConfig cfg;
+    cfg.agents_per_team = 1;
+    cfg.team_spacing    = 200.0f;
+    sim.bootstrap_crowd(cfg);
+
+    // Manually set Target.has_target=true and Velocity=0 on first agent.
+    uint32_t found = 0;
+    sim.world.each<de::CrowdAgent, de::Velocity, de::Target>(
+        [&](de::EntityId, de::CrowdAgent&, de::Velocity& v, de::Target& t) {
+            if (found == 0) {
+                v.dx = 0.0f;  v.dy = 0.0f;
+                t.has_target = true;
+            }
+            ++found;
+        });
+
+    de::RenderFrame frame;
+    de::extract_render_frame(sim.world, 0, 0, frame);
+
+    bool ok = false;
+    for (uint32_t i = 0; i < frame.extracted_count; ++i) {
+        if (frame.agents[i].has_target) { ok = true; break; }
+    }
+    check(ok, "target-vel: has_target true despite zero velocity");
 }
 
 // =================================================================
@@ -275,6 +384,9 @@ int main() {
     test_extract_direction_after_ticks();
     test_extract_direction_normalized();
     test_extract_direction_empty();
+    test_direction_desired_fallback();
+    test_has_target_contract();
+    test_target_independent_of_velocity();
 
     std::printf("\nRenderFrameTest: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail;

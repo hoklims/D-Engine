@@ -123,7 +123,8 @@ ECS archetypal avec stockage SoA (Structure of Arrays). Aucune dependance Win32.
 **Frame extraction** :
 - `RenderFrame` : snapshot lecture seule de la foule (positions, equipe, LOD, HP, direction, engaged). Extrait depuis le World apres le dernier tick du frame.
 - `CrowdRenderItem` : donnees par agent (x, y, team_id, lod_tier, health_pct, dir_x, dir_y, engaged).
-- Direction extraite de `Velocity`. Si velocity == 0, direction = (0,1) (defaut haut), engaged = false.
+- Direction : Velocity > DesiredDirection > (0,1). Orientation stable a l'arret.
+- `has_target` : vrai si `Target.has_target` dans l'ECS (signal tactique, pas velocity).
 - `extract_render_frame()` : itere les CrowdAgent du World, remplit RenderFrame. Cap a k_max_render_agents (4096). Deterministe (meme World = meme frame).
 
 **Renderer DX12 minimal** :
@@ -135,7 +136,7 @@ ECS archetypal avec stockage SoA (Structure of Arrays). Aucune dependance Win32.
 - Deux geometries statiques : quad (world debug + overlay) et kite (agents crowd).
 - Kite = forme fleche/losange 4 verts (nose, right wing, tail, left wing) orientee par dir.
 - InstanceData 40 bytes : pos, half_size, color, dir (float2). Rotation 2D dans le VS.
-- Couleur par equipe (rouge, bleu, vert, jaune), modulee par HP, boost 1.15x si engaged.
+- Couleur par equipe (rouge, bleu, vert, jaune), modulee par HP, boost 1.15x si has_target.
 - Taille par LOD tier : T0=1.0x, T1=0.9x, T2=0.8x, T3=0.7x de k_half_size (0.3).
 - Projection orthographique centree (50 unites demi-largeur).
 - Pas de depth, pas de MSAA, pas de textures.

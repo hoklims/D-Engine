@@ -110,8 +110,8 @@ static constexpr uint16_t k_kite_indices[] = {
 // Per-LOD-tier scale factor for agent half-size.
 static constexpr float k_lod_scale[] = { 1.0f, 0.9f, 0.8f, 0.7f };
 
-// Engaged agents get a subtle brightness boost.
-static constexpr float k_engage_boost = 1.15f;
+// Agents with an active target get a subtle brightness boost.
+static constexpr float k_target_boost = 1.15f;
 
 // -- Device creation ----------------------------------------------------
 
@@ -439,7 +439,7 @@ void Renderer::render(const RenderFrame& frame, const RenderCamera& camera,
             uint32_t ci  = (a.team_id < k_team_color_count) ? a.team_id : 0u;
             uint32_t lod = (a.lod_tier < 4) ? a.lod_tier : 3u;
             float hp     = (a.health_pct > 0.0f) ? a.health_pct : 0.1f;
-            float boost  = a.engaged ? k_engage_boost : 1.0f;
+            float boost  = a.has_target ? k_target_boost : 1.0f;
             float half   = k_half_size * k_lod_scale[lod];
 
             auto clamp1 = [](float v) { return v > 1.0f ? 1.0f : v; };
