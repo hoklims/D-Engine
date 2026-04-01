@@ -28,6 +28,7 @@ bool Engine::init(const EngineConfig& cfg) {
     telemetry_ = {};
     wip_telemetry_ = {};
     render_frame_ = {};
+    render_stats_ = {};
 
     switch (config_.start_scene) {
     case StartScene::Battlefield: sim_.bootstrap_battlefield({}); break;
@@ -79,6 +80,7 @@ void Engine::shutdown() {
     }
     sim_.shutdown();
     window_.destroy();
+    render_stats_ = {};
 }
 
 const FrameInfo& Engine::frame_info() const {

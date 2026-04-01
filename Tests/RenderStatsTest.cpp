@@ -135,6 +135,87 @@ static void test_stats_match_render_frame() {
 }
 
 // =================================================================
+//  Reinit same Engine: stats fresh after shutdown + init
+// =================================================================
+
+static void test_reinit_stats_fresh() {
+    de::EngineConfig cfg;
+    cfg.start_scene     = de::StartScene::Crowd;
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "reinit: first init ok");
+
+    // Run a few frames to populate stats.
+    for (int i = 0; i < 3; ++i)
+        engine.step_one_frame();
+
+    const auto& st1 = engine.render_stats();
+    check(st1.agent_count > 0, "reinit: stats populated after first run");
+
+    engine.shutdown();
+
+    // After shutdown, stats must be clean.
+    const auto& st2 = engine.render_stats();
+    check(st2.agent_count == 0,     "reinit: agent_count == 0 after shutdown");
+    check(st2.instance_count == 0,  "reinit: instance_count == 0 after shutdown");
+    check(st2.dropped_count == 0,   "reinit: dropped_count == 0 after shutdown");
+    check(st2.draw_call_count == 0, "reinit: draw_call_count == 0 after shutdown");
+    check(!st2.frame_skipped,       "reinit: frame_skipped == false after shutdown");
+
+    // Re-init with a different scene.
+    cfg.start_scene = de::StartScene::Basic;
+    check(engine.init(cfg), "reinit: second init ok");
+
+    // Before stepping, stats must still be clean (not stale from first run).
+    const auto& st3 = engine.render_stats();
+    check(st3.agent_count == 0,     "reinit: agent_count == 0 after re-init");
+    check(st3.instance_count == 0,  "reinit: instance_count == 0 after re-init");
+    check(st3.dropped_count == 0,   "reinit: dropped_count == 0 after re-init");
+    check(st3.draw_call_count == 0, "reinit: draw_call_count == 0 after re-init");
+
+    // Step and verify new scene stats are correct (Basic = 0 agents).
+    engine.step_one_frame();
+    const auto& st4 = engine.render_stats();
+    check(st4.agent_count == 0,     "reinit: basic scene agent_count == 0");
+    check(st4.dropped_count == 0,   "reinit: basic scene dropped == 0");
+
+    engine.shutdown();
+}
+
+// =================================================================
+//  Reinit same Engine: crowd -> crowd, stats reflect new scene
+// =================================================================
+
+static void test_reinit_crowd_to_crowd() {
+    de::EngineConfig cfg;
+    cfg.start_scene     = de::StartScene::Crowd;
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "c2c: first init ok");
+
+    engine.step_one_frame();
+    uint32_t count1 = engine.render_stats().agent_count;
+    check(count1 > 0, "c2c: first run has agents");
+
+    engine.shutdown();
+
+    // Re-init same scene.
+    check(engine.init(cfg), "c2c: second init ok");
+
+    // Fresh before step.
+    check(engine.render_stats().agent_count == 0,
+          "c2c: fresh after re-init");
+
+    engine.step_one_frame();
+    uint32_t count2 = engine.render_stats().agent_count;
+    check(count2 > 0, "c2c: second run has agents");
+
+    engine.shutdown();
+}
+
+// =================================================================
 
 int main() {
     test_headless_stats_published();
@@ -142,6 +223,8 @@ int main() {
     test_headless_empty();
     test_stats_fresh_after_init();
     test_stats_match_render_frame();
+    test_reinit_stats_fresh();
+    test_reinit_crowd_to_crowd();
 
     std::printf("\nRenderStatsTest: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail;
