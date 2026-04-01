@@ -156,100 +156,112 @@ bool Renderer::init(HWND hwnd, int32_t width, int32_t height) {
     width_  = width;
     height_ = height;
 
-    if (!create_device()) return false;
+    // Single-exit cleanup: any break triggers shutdown() which releases
+    // every resource allocated so far (ComPtrs, HANDLE, mapped pointer).
+    do {
+        if (!create_device()) break;
 
-    // Command queue.
-    D3D12_COMMAND_QUEUE_DESC qd = {};
-    qd.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-    if (FAILED(device_->CreateCommandQueue(&qd, IID_PPV_ARGS(&cmd_queue_))))
-        return false;
+        // Command queue.
+        D3D12_COMMAND_QUEUE_DESC qd = {};
+        qd.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+        if (FAILED(device_->CreateCommandQueue(&qd, IID_PPV_ARGS(&cmd_queue_))))
+            break;
 
-    // Swap chain (double-buffered, flip-discard).
-    ComPtr<IDXGIFactory4> factory;
-    if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))))
-        return false;
+        // Swap chain (double-buffered, flip-discard).
+        ComPtr<IDXGIFactory4> factory;
+        if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))))
+            break;
 
-    DXGI_SWAP_CHAIN_DESC1 scd = {};
-    scd.Width       = static_cast<UINT>(width);
-    scd.Height      = static_cast<UINT>(height);
-    scd.Format      = DXGI_FORMAT_R8G8B8A8_UNORM;
-    scd.SampleDesc.Count = 1;
-    scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    scd.BufferCount = k_frame_count;
-    scd.SwapEffect  = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+        DXGI_SWAP_CHAIN_DESC1 scd = {};
+        scd.Width       = static_cast<UINT>(width);
+        scd.Height      = static_cast<UINT>(height);
+        scd.Format      = DXGI_FORMAT_R8G8B8A8_UNORM;
+        scd.SampleDesc.Count = 1;
+        scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        scd.BufferCount = k_frame_count;
+        scd.SwapEffect  = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 
-    ComPtr<IDXGISwapChain1> sc1;
-    if (FAILED(factory->CreateSwapChainForHwnd(
-            cmd_queue_.Get(), hwnd, &scd, nullptr, nullptr, &sc1)))
-        return false;
-    factory->MakeWindowAssociation(hwnd, DXGI_MWA_NO_ALT_ENTER);
-    if (FAILED(sc1.As(&swap_chain_)))
-        return false;
+        ComPtr<IDXGISwapChain1> sc1;
+        if (FAILED(factory->CreateSwapChainForHwnd(
+                cmd_queue_.Get(), hwnd, &scd, nullptr, nullptr, &sc1)))
+            break;
+        factory->MakeWindowAssociation(hwnd, DXGI_MWA_NO_ALT_ENTER);
+        if (FAILED(sc1.As(&swap_chain_)))
+            break;
 
-    frame_index_ = swap_chain_->GetCurrentBackBufferIndex();
+        frame_index_ = swap_chain_->GetCurrentBackBufferIndex();
 
-    // RTV descriptor heap.
-    D3D12_DESCRIPTOR_HEAP_DESC hd = {};
-    hd.NumDescriptors = k_frame_count;
-    hd.Type           = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-    if (FAILED(device_->CreateDescriptorHeap(&hd, IID_PPV_ARGS(&rtv_heap_))))
-        return false;
+        // RTV descriptor heap.
+        D3D12_DESCRIPTOR_HEAP_DESC hd = {};
+        hd.NumDescriptors = k_frame_count;
+        hd.Type           = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+        if (FAILED(device_->CreateDescriptorHeap(&hd, IID_PPV_ARGS(&rtv_heap_))))
+            break;
 
-    rtv_size_ = device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+        rtv_size_ = device_->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
-    D3D12_CPU_DESCRIPTOR_HANDLE rtv = rtv_heap_->GetCPUDescriptorHandleForHeapStart();
-    for (uint32_t i = 0; i < k_frame_count; ++i) {
-        if (FAILED(swap_chain_->GetBuffer(i, IID_PPV_ARGS(&render_targets_[i]))))
-            return false;
-        device_->CreateRenderTargetView(render_targets_[i].Get(), nullptr, rtv);
-        rtv.ptr += rtv_size_;
-    }
+        D3D12_CPU_DESCRIPTOR_HANDLE rtv = rtv_heap_->GetCPUDescriptorHandleForHeapStart();
+        bool rtv_ok = true;
+        for (uint32_t i = 0; i < k_frame_count; ++i) {
+            if (FAILED(swap_chain_->GetBuffer(i, IID_PPV_ARGS(&render_targets_[i])))) {
+                rtv_ok = false;
+                break;
+            }
+            device_->CreateRenderTargetView(render_targets_[i].Get(), nullptr, rtv);
+            rtv.ptr += rtv_size_;
+        }
+        if (!rtv_ok) break;
 
-    // Command allocator + command list.
-    if (FAILED(device_->CreateCommandAllocator(
-            D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&cmd_alloc_))))
-        return false;
-    if (FAILED(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
-            cmd_alloc_.Get(), nullptr, IID_PPV_ARGS(&cmd_list_))))
-        return false;
-    cmd_list_->Close();
+        // Command allocator + command list.
+        if (FAILED(device_->CreateCommandAllocator(
+                D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&cmd_alloc_))))
+            break;
+        if (FAILED(device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
+                cmd_alloc_.Get(), nullptr, IID_PPV_ARGS(&cmd_list_))))
+            break;
+        cmd_list_->Close();
 
-    // Fence.
-    if (FAILED(device_->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence_))))
-        return false;
-    fence_event_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    if (!fence_event_) return false;
+        // Fence.
+        if (FAILED(device_->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence_))))
+            break;
+        fence_event_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        if (!fence_event_) break;
 
-    // Pipeline (shaders + root sig + PSO).
-    if (!create_pipeline()) return false;
+        // Pipeline (shaders + root sig + PSO).
+        if (!create_pipeline()) break;
 
-    // Vertex buffer (upload heap, persistently mapped).
-    vb_capacity_ = k_max_render_agents * k_verts_per_agent;
-    UINT vb_bytes = vb_capacity_ * static_cast<UINT>(sizeof(RenderVertex));
+        // Vertex buffer (upload heap, persistently mapped).
+        vb_capacity_ = k_max_render_agents * k_verts_per_agent;
+        UINT vb_bytes = vb_capacity_ * static_cast<UINT>(sizeof(RenderVertex));
 
-    D3D12_HEAP_PROPERTIES hp = {};
-    hp.Type = D3D12_HEAP_TYPE_UPLOAD;
+        D3D12_HEAP_PROPERTIES hp = {};
+        hp.Type = D3D12_HEAP_TYPE_UPLOAD;
 
-    D3D12_RESOURCE_DESC rd = {};
-    rd.Dimension          = D3D12_RESOURCE_DIMENSION_BUFFER;
-    rd.Width              = vb_bytes;
-    rd.Height             = 1;
-    rd.DepthOrArraySize   = 1;
-    rd.MipLevels          = 1;
-    rd.SampleDesc.Count   = 1;
-    rd.Layout             = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        D3D12_RESOURCE_DESC rd = {};
+        rd.Dimension          = D3D12_RESOURCE_DIMENSION_BUFFER;
+        rd.Width              = vb_bytes;
+        rd.Height             = 1;
+        rd.DepthOrArraySize   = 1;
+        rd.MipLevels          = 1;
+        rd.SampleDesc.Count   = 1;
+        rd.Layout             = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 
-    if (FAILED(device_->CreateCommittedResource(
-            &hp, D3D12_HEAP_FLAG_NONE, &rd,
-            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-            IID_PPV_ARGS(&vertex_buffer_))))
-        return false;
+        if (FAILED(device_->CreateCommittedResource(
+                &hp, D3D12_HEAP_FLAG_NONE, &rd,
+                D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                IID_PPV_ARGS(&vertex_buffer_))))
+            break;
 
-    D3D12_RANGE rr = {};
-    if (FAILED(vertex_buffer_->Map(0, &rr, &vb_mapped_)))
-        return false;
+        D3D12_RANGE rr = {};
+        if (FAILED(vertex_buffer_->Map(0, &rr, &vb_mapped_)))
+            break;
 
-    return true;
+        return true;
+    } while (false);
+
+    // Partial init failed -- release everything already created.
+    shutdown();
+    return false;
 }
 
 // -- Render -------------------------------------------------------------

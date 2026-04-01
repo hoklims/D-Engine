@@ -51,20 +51,22 @@ bool Engine::init(const EngineConfig& cfg) {
 
 void Engine::run() {
     while (running_) {
-        wip_telemetry_ = {};
-
-        {
-            ScopeTimer total_timer(&wip_telemetry_.total_frame_s);
-
-            begin_frame();
-            if (!running_) break;
-            tick_fixed_steps();
-            render();
-            end_frame();
-        } // total_timer destroyed here -- total_frame_s now final
-
-        telemetry_ = wip_telemetry_;
+        step_one_frame();
     }
+}
+
+void Engine::step_one_frame() {
+    if (!running_) return;
+    wip_telemetry_ = {};
+    {
+        ScopeTimer total_timer(&wip_telemetry_.total_frame_s);
+        begin_frame();
+        if (!running_) return;
+        tick_fixed_steps();
+        render();
+        end_frame();
+    }
+    telemetry_ = wip_telemetry_;
 }
 
 void Engine::shutdown() {

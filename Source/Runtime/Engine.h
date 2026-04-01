@@ -18,6 +18,7 @@ struct Engine {
     bool init();
     bool init(const EngineConfig& cfg);
     void run();
+    void step_one_frame();
     void shutdown();
 
     const FrameInfo& frame_info() const;

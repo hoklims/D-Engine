@@ -35,7 +35,8 @@ bool Window::create(const WindowDesc& desc) {
     wc.hCursor = LoadCursorA(nullptr, IDC_ARROW);
     wc.lpszClassName = kWindowClassName;
 
-    if (!RegisterClassExA(&wc)) return false;
+    if (!RegisterClassExA(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
+        return false;
 
     RECT rect = {0, 0, desc.width, desc.height};
     AdjustWindowRectEx(&rect, WS_OVERLAPPEDWINDOW, FALSE, 0);
@@ -72,6 +73,10 @@ void Window::destroy() {
         DestroyWindow(hwnd_);
         hwnd_ = nullptr;
         UnregisterClassA(kWindowClassName, GetModuleHandleA(nullptr));
+        // Drain any WM_QUIT posted by WM_DESTROY so it does not
+        // poison future windows created in the same thread.
+        MSG msg;
+        while (PeekMessageA(&msg, nullptr, WM_QUIT, WM_QUIT, PM_REMOVE)) {}
     }
     open_ = false;
 }
