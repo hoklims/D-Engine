@@ -14,6 +14,9 @@ struct CrowdRenderItem {
     uint8_t  team_id    = 0;
     uint8_t  lod_tier   = 0;
     float    health_pct = 1.0f;   // 0.0 - 1.0
+    float    dir_x      = 0.0f;   // normalized facing direction
+    float    dir_y      = 1.0f;   // (0,1) = default up
+    bool     engaged    = false;  // moving / has intent
 };
 
 static constexpr uint32_t k_max_render_agents = 4096;

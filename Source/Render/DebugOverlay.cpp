@@ -122,6 +122,8 @@ uint32_t generate_overlay_instances(
     out[n].g       = k_bg_g;
     out[n].b       = k_bg_b;
     out[n].a       = 1.0f;
+    out[n].dir_x   = 0.0f;
+    out[n].dir_y   = 1.0f;
     ++n;
 
     // Emit pixel-quads for each lit font dot.
@@ -155,6 +157,8 @@ uint32_t generate_overlay_instances(
                     out[n].g       = k_text_g;
                     out[n].b       = k_text_b;
                     out[n].a       = 1.0f;
+                    out[n].dir_x   = 0.0f;
+                    out[n].dir_y   = 1.0f;
                     ++n;
                 }
             }

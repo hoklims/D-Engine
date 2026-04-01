@@ -17,7 +17,7 @@ void generate_world_debug(const WorldDebugConfig& config, WorldDebugData& out) {
     auto push = [&](float px, float py, float hsx, float hsy,
                      float r, float g, float b, float a) {
         if (out.count >= k_max_world_debug_instances) return;
-        out.items[out.count++] = { px, py, hsx, hsy, r, g, b, a };
+        out.items[out.count++] = { px, py, hsx, hsy, r, g, b, a, 0.0f, 1.0f };
     };
 
     float ext = config.world_extent;

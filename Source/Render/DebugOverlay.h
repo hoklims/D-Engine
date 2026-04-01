@@ -8,11 +8,13 @@ namespace de {
 static constexpr uint32_t k_max_overlay_instances = 2048;
 
 // CPU-side instance data for overlay quads.
-// Layout matches InstanceData in Renderer.cpp (pos, half_size, color).
+// Layout matches InstanceData in Renderer.cpp (pos, half_size, color, dir).
 struct OverlayInstance {
     float pos_x, pos_y;
     float half_sx, half_sy;
     float r, g, b, a;
+    float dir_x = 0.0f;
+    float dir_y = 1.0f;   // no rotation
 };
 
 // Structured text lines extracted from runtime state.

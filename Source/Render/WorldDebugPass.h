@@ -15,12 +15,14 @@ struct WorldDebugConfig {
 static constexpr uint32_t k_max_world_debug_instances = 512;
 
 // CPU-side instance data for debug geometry.
-// Layout matches the renderer InstanceData (pos, half_size xy, color).
+// Layout matches the renderer InstanceData (pos, half_size, color, dir).
 struct WorldDebugData {
     struct Instance {
         float pos_x, pos_y;
         float half_sx, half_sy;
         float r, g, b, a;
+        float dir_x = 0.0f;
+        float dir_y = 1.0f;   // no rotation
     };
     Instance items[k_max_world_debug_instances];
     uint32_t count = 0;

@@ -23,13 +23,14 @@ cbuffer OrthoMatrix : register(b0) {
     float4x4 ortho;
 };
 
-// Per-vertex: local quad position (slot 0).
+// Per-vertex: local shape position (slot 0).
 struct VSIn {
     float2 local_pos : POSITION;
     // Per-instance data (slot 1).
     float2 world_pos : INST_POS;
     float2 half_size : INST_SIZE;
     float4 color     : INST_COLOR;
+    float2 dir       : INST_DIR;
 };
 
 struct PSIn {
@@ -39,7 +40,11 @@ struct PSIn {
 
 PSIn VSMain(VSIn i) {
     PSIn o;
-    float2 wp = i.world_pos + i.local_pos * i.half_size;
+    // Rotate local_pos so that +Y faces (dir.x, dir.y).
+    float2 r = float2(
+         i.local_pos.x * i.dir.y + i.local_pos.y * i.dir.x,
+        -i.local_pos.x * i.dir.x + i.local_pos.y * i.dir.y);
+    float2 wp = i.world_pos + r * i.half_size;
     o.pos = mul(ortho, float4(wp, 0.0, 1.0));
     o.col = i.color;
     return o;
@@ -56,6 +61,8 @@ struct InstanceData {
     float half_sx;
     float half_sy;
     float r, g, b, a;
+    float dir_x;      // facing direction (0,1) = up / no rotation
+    float dir_y;
 };
 
 static constexpr float k_half_size = 0.3f;
@@ -85,6 +92,26 @@ static constexpr uint16_t k_quad_indices[] = {
     0, 1, 3,   // TL, TR, BL
     1, 2, 3,   // TR, BR, BL
 };
+
+// -- Kite geometry (crowd agents) ------------------------------------------
+
+// Arrow/kite shape pointing +Y. 4 verts, 2 triangles, same index count as quad.
+static constexpr QuadVertex k_kite_verts[] = {
+    {  0.0f,  1.0f },  // 0: nose (front)
+    {  0.7f, -0.3f },  // 1: right wing
+    {  0.0f, -0.8f },  // 2: tail
+    { -0.7f, -0.3f },  // 3: left wing
+};
+static constexpr uint16_t k_kite_indices[] = {
+    0, 1, 2,   // nose-right-tail
+    0, 2, 3,   // nose-tail-left
+};
+
+// Per-LOD-tier scale factor for agent half-size.
+static constexpr float k_lod_scale[] = { 1.0f, 0.9f, 0.8f, 0.7f };
+
+// Engaged agents get a subtle brightness boost.
+static constexpr float k_engage_boost = 1.15f;
 
 // -- Device creation ----------------------------------------------------
 
@@ -162,7 +189,7 @@ bool Renderer::create_pipeline() {
             rs_blob->GetBufferSize(), IID_PPV_ARGS(&root_sig_))))
         return false;
 
-    // Input layout: slot 0 = per-vertex quad, slot 1 = per-instance data.
+    // Input layout: slot 0 = per-vertex shape, slot 1 = per-instance data.
     D3D12_INPUT_ELEMENT_DESC il[] = {
         // Slot 0: per-vertex.
         { "POSITION",   0, DXGI_FORMAT_R32G32_FLOAT,       0,  0,
@@ -173,6 +200,8 @@ bool Renderer::create_pipeline() {
         { "INST_SIZE",  0, DXGI_FORMAT_R32G32_FLOAT,       1,  8,
           D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1 },
         { "INST_COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 16,
+          D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1 },
+        { "INST_DIR",   0, DXGI_FORMAT_R32G32_FLOAT,       1, 32,
           D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1 },
     };
 
@@ -319,6 +348,16 @@ bool Renderer::init(HWND hwnd, int32_t width, int32_t height) {
                 k_quad_indices, sizeof(k_quad_indices)))
             break;
 
+        // Static kite vertex buffer (4 vertices, crowd agents).
+        if (!create_upload_buffer(device_.Get(), kite_vb_,
+                k_kite_verts, sizeof(k_kite_verts)))
+            break;
+
+        // Static kite index buffer (6 indices, 2 triangles).
+        if (!create_upload_buffer(device_.Get(), kite_ib_,
+                k_kite_indices, sizeof(k_kite_indices)))
+            break;
+
         // Dynamic instance buffer (upload heap, persistently mapped).
         // Extra room for world debug geometry + overlay text quads.
         ib_capacity_ = k_max_render_agents + k_max_world_debug_instances
@@ -382,11 +421,13 @@ void Renderer::render(const RenderFrame& frame, const RenderCamera& camera,
             inst[i].g       = w.g;
             inst[i].b       = w.b;
             inst[i].a       = w.a;
+            inst[i].dir_x   = w.dir_x;
+            inst[i].dir_y   = w.dir_y;
         }
         world_count = limit;
     }
 
-    // Crowd instances.
+    // Crowd instances (kite shape, oriented, LOD-scaled).
     {
         uint32_t crowd_cap = ib_capacity_ - world_count;
         uint32_t limit = (frame.extracted_count < crowd_cap)
@@ -395,17 +436,24 @@ void Renderer::render(const RenderFrame& frame, const RenderCamera& camera,
         InstanceData* dst = inst + world_count;
         for (uint32_t i = 0; i < limit; ++i) {
             const auto& a = frame.agents[i];
-            uint32_t ci = (a.team_id < k_team_color_count) ? a.team_id : 0u;
-            float hp = (a.health_pct > 0.0f) ? a.health_pct : 0.1f;
+            uint32_t ci  = (a.team_id < k_team_color_count) ? a.team_id : 0u;
+            uint32_t lod = (a.lod_tier < 4) ? a.lod_tier : 3u;
+            float hp     = (a.health_pct > 0.0f) ? a.health_pct : 0.1f;
+            float boost  = a.engaged ? k_engage_boost : 1.0f;
+            float half   = k_half_size * k_lod_scale[lod];
+
+            auto clamp1 = [](float v) { return v > 1.0f ? 1.0f : v; };
 
             dst[i].pos_x   = a.x;
             dst[i].pos_y   = a.y;
-            dst[i].half_sx = k_half_size;
-            dst[i].half_sy = k_half_size;
-            dst[i].r       = k_team_colors[ci][0] * hp;
-            dst[i].g       = k_team_colors[ci][1] * hp;
-            dst[i].b       = k_team_colors[ci][2] * hp;
+            dst[i].half_sx = half;
+            dst[i].half_sy = half;
+            dst[i].r       = clamp1(k_team_colors[ci][0] * hp * boost);
+            dst[i].g       = clamp1(k_team_colors[ci][1] * hp * boost);
+            dst[i].b       = clamp1(k_team_colors[ci][2] * hp * boost);
             dst[i].a       = k_team_colors[ci][3];
+            dst[i].dir_x   = a.dir_x;
+            dst[i].dir_y   = a.dir_y;
         }
         crowd_count = limit;
     }
@@ -479,38 +527,53 @@ void Renderer::render(const RenderFrame& frame, const RenderCamera& camera,
     if (total_count > 0) {
         cmd_list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-        // Slot 0: quad vertices.
-        D3D12_VERTEX_BUFFER_VIEW vbv = {};
-        vbv.BufferLocation = quad_vb_->GetGPUVirtualAddress();
-        vbv.SizeInBytes    = sizeof(k_quad_verts);
-        vbv.StrideInBytes  = sizeof(QuadVertex);
+        // Slot 1: instance data (shared across all passes).
+        D3D12_VERTEX_BUFFER_VIEW inst_view = {};
+        inst_view.BufferLocation = instance_buffer_->GetGPUVirtualAddress();
+        inst_view.SizeInBytes    = total_count * static_cast<UINT>(sizeof(InstanceData));
+        inst_view.StrideInBytes  = static_cast<UINT>(sizeof(InstanceData));
+        cmd_list_->IASetVertexBuffers(1, 1, &inst_view);
 
-        // Slot 1: instance data (world debug + crowd contiguous).
-        D3D12_VERTEX_BUFFER_VIEW ibv = {};
-        ibv.BufferLocation = instance_buffer_->GetGPUVirtualAddress();
-        ibv.SizeInBytes    = total_count * static_cast<UINT>(sizeof(InstanceData));
-        ibv.StrideInBytes  = static_cast<UINT>(sizeof(InstanceData));
+        // Quad geometry views (world debug + overlay).
+        D3D12_VERTEX_BUFFER_VIEW quad_view = {};
+        quad_view.BufferLocation = quad_vb_->GetGPUVirtualAddress();
+        quad_view.SizeInBytes    = sizeof(k_quad_verts);
+        quad_view.StrideInBytes  = sizeof(QuadVertex);
 
-        D3D12_VERTEX_BUFFER_VIEW views[] = { vbv, ibv };
-        cmd_list_->IASetVertexBuffers(0, 2, views);
+        D3D12_INDEX_BUFFER_VIEW quad_ix = {};
+        quad_ix.BufferLocation = quad_ib_->GetGPUVirtualAddress();
+        quad_ix.SizeInBytes    = sizeof(k_quad_indices);
+        quad_ix.Format         = DXGI_FORMAT_R16_UINT;
 
-        D3D12_INDEX_BUFFER_VIEW ixv = {};
-        ixv.BufferLocation = quad_ib_->GetGPUVirtualAddress();
-        ixv.SizeInBytes    = sizeof(k_quad_indices);
-        ixv.Format         = DXGI_FORMAT_R16_UINT;
-        cmd_list_->IASetIndexBuffer(&ixv);
-
-        // Draw world debug (behind crowd).
+        // -- World debug pass (quad geometry, behind crowd). --
         if (world_count > 0) {
+            cmd_list_->IASetVertexBuffers(0, 1, &quad_view);
+            cmd_list_->IASetIndexBuffer(&quad_ix);
             cmd_list_->DrawIndexedInstanced(6, world_count, 0, 0, 0);
         }
-        // Draw crowd (on top).
+
+        // -- Crowd pass (kite geometry, oriented per agent). --
         if (crowd_count > 0) {
+            D3D12_VERTEX_BUFFER_VIEW kite_view = {};
+            kite_view.BufferLocation = kite_vb_->GetGPUVirtualAddress();
+            kite_view.SizeInBytes    = sizeof(k_kite_verts);
+            kite_view.StrideInBytes  = sizeof(QuadVertex);
+
+            D3D12_INDEX_BUFFER_VIEW kite_ix = {};
+            kite_ix.BufferLocation = kite_ib_->GetGPUVirtualAddress();
+            kite_ix.SizeInBytes    = sizeof(k_kite_indices);
+            kite_ix.Format         = DXGI_FORMAT_R16_UINT;
+
+            cmd_list_->IASetVertexBuffers(0, 1, &kite_view);
+            cmd_list_->IASetIndexBuffer(&kite_ix);
             cmd_list_->DrawIndexedInstanced(6, crowd_count, 0, 0, world_count);
         }
 
-        // Draw overlay (screen-space projection, on top of everything).
+        // -- Overlay pass (quad geometry, screen-space ortho). --
         if (overlay_used > 0) {
+            cmd_list_->IASetVertexBuffers(0, 1, &quad_view);
+            cmd_list_->IASetIndexBuffer(&quad_ix);
+
             float screen_ortho[16] = {};
             screen_ortho[0]  =  2.0f / static_cast<float>(width_);
             screen_ortho[5]  = -2.0f / static_cast<float>(height_);

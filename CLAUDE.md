@@ -121,8 +121,9 @@ ECS archetypal avec stockage SoA (Structure of Arrays). Aucune dependance Win32.
 ### Render (Source/Render/)
 
 **Frame extraction** :
-- `RenderFrame` : snapshot lecture seule de la foule (positions, equipe, LOD, HP). Extrait depuis le World apres le dernier tick du frame.
-- `CrowdRenderItem` : donnees par agent (x, y, team_id, lod_tier, health_pct).
+- `RenderFrame` : snapshot lecture seule de la foule (positions, equipe, LOD, HP, direction, engaged). Extrait depuis le World apres le dernier tick du frame.
+- `CrowdRenderItem` : donnees par agent (x, y, team_id, lod_tier, health_pct, dir_x, dir_y, engaged).
+- Direction extraite de `Velocity`. Si velocity == 0, direction = (0,1) (defaut haut), engaged = false.
 - `extract_render_frame()` : itere les CrowdAgent du World, remplit RenderFrame. Cap a k_max_render_agents (4096). Deterministe (meme World = meme frame).
 
 **Renderer DX12 minimal** :
@@ -131,10 +132,13 @@ ECS archetypal avec stockage SoA (Structure of Arrays). Aucune dependance Win32.
 - Command queue direct, allocator unique, synchrone (CPU wait GPU chaque frame).
 - Root signature : 16 root constants (matrice ortho 4x4).
 - PSO : triangle list, VS/PS compiles a l'init via D3DCompile (HLSL inline).
-- Vertex buffer upload heap, map persistant. 6 vertices/agent (quad 2 triangles).
-- Couleur par equipe (rouge, bleu, vert, jaune), modulee par HP.
+- Deux geometries statiques : quad (world debug + overlay) et kite (agents crowd).
+- Kite = forme fleche/losange 4 verts (nose, right wing, tail, left wing) orientee par dir.
+- InstanceData 40 bytes : pos, half_size, color, dir (float2). Rotation 2D dans le VS.
+- Couleur par equipe (rouge, bleu, vert, jaune), modulee par HP, boost 1.15x si engaged.
+- Taille par LOD tier : T0=1.0x, T1=0.9x, T2=0.8x, T3=0.7x de k_half_size (0.3).
 - Projection orthographique centree (50 unites demi-largeur).
-- Pas de depth, pas de MSAA, pas de textures, pas d'instancing avance.
+- Pas de depth, pas de MSAA, pas de textures.
 
 **Debug overlay** :
 - `DebugOverlayData` : lignes de texte extraites du runtime (scene, paused, tick, agents, budget).

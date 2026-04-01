@@ -26,9 +26,9 @@ struct RenderCamera;
 struct WorldDebugData;
 struct OverlayInstance;
 
-// Minimal DX12 instanced renderer -- draws crowd as colored quads.
-// One shared quad (4 verts + 6 indices), one instance per agent.
-// Synchronous (CPU waits for GPU each frame). No depth buffer, no MSAA.
+// Minimal DX12 instanced renderer.
+// Quad geometry for world debug + overlay, kite geometry for crowd agents.
+// Per-instance rotation via direction vector. Synchronous, no depth, no MSAA.
 struct Renderer {
     Renderer() = default;
     ~Renderer();
@@ -68,9 +68,13 @@ private:
     ComPtr<ID3D12RootSignature>       root_sig_;
     ComPtr<ID3D12PipelineState>       pso_;
 
-    // Static quad geometry (4 verts + 6 indices).
+    // Static quad geometry (4 verts + 6 indices) -- world debug + overlay.
     ComPtr<ID3D12Resource>            quad_vb_;
     ComPtr<ID3D12Resource>            quad_ib_;
+
+    // Static kite geometry (4 verts + 6 indices) -- crowd agents.
+    ComPtr<ID3D12Resource>            kite_vb_;
+    ComPtr<ID3D12Resource>            kite_ib_;
 
     // Dynamic instance buffer (upload heap, persistently mapped).
     ComPtr<ID3D12Resource>            instance_buffer_;

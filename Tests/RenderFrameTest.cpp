@@ -163,6 +163,105 @@ static void test_extract_empty() {
 }
 
 // =================================================================
+//  Direction defaults to (0,1) at spawn (zero velocity)
+// =================================================================
+
+static void test_extract_direction_default() {
+    de::SimState sim;
+    sim.bootstrap_crowd();
+
+    de::RenderFrame frame;
+    de::extract_render_frame(sim.world, 0, 0, frame);
+
+    bool all_default = true;
+    for (uint32_t i = 0; i < frame.extracted_count; ++i) {
+        const auto& a = frame.agents[i];
+        if (a.dir_x != 0.0f || a.dir_y != 1.0f) {
+            all_default = false;
+            break;
+        }
+    }
+    check(all_default, "dir-default: (0,1) at spawn (v=0)");
+}
+
+// =================================================================
+//  Direction tracks velocity after ticks
+// =================================================================
+
+static void test_extract_direction_after_ticks() {
+    de::SimState sim;
+    de::CrowdConfig cfg;
+    cfg.agents_per_team = 5;
+    cfg.team_spacing    = 10.0f;
+    sim.bootstrap_crowd(cfg);
+
+    for (int i = 0; i < 30; ++i)
+        sim.tick(1.0 / 60.0);
+
+    de::RenderFrame frame;
+    de::extract_render_frame(sim.world, 30, 30, frame);
+
+    // After 30 ticks with close teams, agents should be moving.
+    bool any_engaged = false;
+    bool any_nondefault_dir = false;
+    for (uint32_t i = 0; i < frame.extracted_count; ++i) {
+        const auto& a = frame.agents[i];
+        if (a.engaged) any_engaged = true;
+        if (a.dir_x != 0.0f || a.dir_y != 1.0f)
+            any_nondefault_dir = true;
+    }
+    check(any_engaged, "dir-ticks: some agents engaged");
+    check(any_nondefault_dir, "dir-ticks: some agents facing non-default");
+}
+
+// =================================================================
+//  Direction is normalized when non-zero
+// =================================================================
+
+static void test_extract_direction_normalized() {
+    de::SimState sim;
+    de::CrowdConfig cfg;
+    cfg.agents_per_team = 5;
+    cfg.team_spacing    = 10.0f;
+    sim.bootstrap_crowd(cfg);
+
+    for (int i = 0; i < 20; ++i)
+        sim.tick(1.0 / 60.0);
+
+    de::RenderFrame frame;
+    de::extract_render_frame(sim.world, 20, 20, frame);
+
+    bool all_unit = true;
+    for (uint32_t i = 0; i < frame.extracted_count; ++i) {
+        const auto& a = frame.agents[i];
+        float len = a.dir_x * a.dir_x + a.dir_y * a.dir_y;
+        if (len < 0.99f || len > 1.01f) {
+            all_unit = false;
+            break;
+        }
+    }
+    check(all_unit, "dir-norm: all directions are unit length");
+}
+
+// =================================================================
+//  Empty world: direction fields have safe defaults
+// =================================================================
+
+static void test_extract_direction_empty() {
+    de::SimState sim;
+    sim.bootstrap();
+
+    de::RenderFrame frame;
+    de::extract_render_frame(sim.world, 0, 0, frame);
+
+    check(frame.extracted_count == 0, "dir-empty: no agents");
+    // Verify default-initialized items are safe.
+    check(frame.agents[0].dir_x == 0.0f, "dir-empty: default dir_x");
+    check(frame.agents[0].dir_y == 1.0f, "dir-empty: default dir_y");
+    check(!frame.agents[0].engaged,       "dir-empty: default not engaged");
+}
+
+// =================================================================
 
 int main() {
     test_extract_basic();
@@ -172,6 +271,10 @@ int main() {
     test_extract_stability();
     test_extract_after_deaths();
     test_extract_empty();
+    test_extract_direction_default();
+    test_extract_direction_after_ticks();
+    test_extract_direction_normalized();
+    test_extract_direction_empty();
 
     std::printf("\nRenderFrameTest: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail;
