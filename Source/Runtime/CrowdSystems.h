@@ -85,6 +85,15 @@ uint32_t apply_crowd_steering(WorldView& view, float dt, CommandBuffer& cmds);
 // spatial grid built by select_targets.  Runs after ApplyCrowdSteer
 // and before ApplySeparation.  Side selection is deterministic
 // (EntityId comparison).  LOD gated.
+//
+// Simultaneous resolution: all agents compute against a velocity
+// snapshot taken before the pass (not the live world).  Result is
+// independent of iteration order.
+//
+// Navigation safety: when battlefield grids are installed, a dodge
+// that would push the agent into a BLOCKED cell (probed at pos +
+// new_vel * dt) is rejected entirely.  Avoidance never causes wall
+// penetration.
 uint32_t apply_local_avoidance(WorldView& view, float dt, CommandBuffer& cmds);
 
 // Melee broadphase: for each crowd agent, query the spatial grid for

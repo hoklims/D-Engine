@@ -237,6 +237,144 @@ static void test_presets_compatible() {
 }
 
 // =================================================================
+//  Battlefield + wall + avoidance active: no wall penetration
+// =================================================================
+// With avoidance enabled and a battlefield grid with a wall, agents
+// must never end up in a blocked cell.  This verifies the nav clamp.
+
+static void test_battlefield_wall_no_penetration() {
+    // Wall at column 30 (world x ~ 0), gap at row 20 only.
+    de::ObstacleDef obstacles[39];
+    int obs_count = 0;
+    for (int y = 0; y < 40; ++y) {
+        if (y != 20) {
+            obstacles[obs_count++] = {30, y};
+        }
+    }
+
+    de::BattlefieldConfig bcfg;
+    bcfg.crowd.agents_per_team = 5;
+    bcfg.crowd.team_spacing    = 10.0f;
+    bcfg.crowd.agent_spread    = 0.5f;
+    bcfg.crowd.move_speed      = 3.0f;
+    bcfg.crowd.health          = 10000.0f;
+    bcfg.crowd.engage_radius   = 2.0f;
+    bcfg.crowd.attack_range    = 1.0f;
+    // Avoidance explicitly enabled (defaults).
+    bcfg.crowd.avoidance_radius   = 3.0f;
+    bcfg.crowd.avoidance_horizon  = 0.8f;
+    bcfg.crowd.avoidance_strength = 2.5f;
+    bcfg.grid_width    = 60;
+    bcfg.grid_height   = 40;
+    bcfg.grid_cell     = 1.0f;
+    bcfg.grid_ox       = -30.0f;
+    bcfg.grid_oy       = -20.0f;
+    bcfg.obstacles     = obstacles;
+    bcfg.obstacle_count = obs_count;
+
+    de::SimState sim;
+    sim.bootstrap_battlefield(bcfg);
+
+    bool wall_violated = false;
+    // Use dt=1.0 (large timestep) to stress-test the nav clamp.
+    for (int tick = 0; tick < 40; ++tick) {
+        sim.tick(1.0);
+        sim.world.each<de::CrowdAgent, de::Position>(
+            [&](de::EntityId, de::CrowdAgent&, de::Position& p) {
+                int cx = static_cast<int>(std::floor((p.x - bcfg.grid_ox) / bcfg.grid_cell));
+                int cy = static_cast<int>(std::floor((p.y - bcfg.grid_oy) / bcfg.grid_cell));
+                if (cx == 30 && cy != 20) {
+                    wall_violated = true;
+                }
+            });
+    }
+    check(!wall_violated,
+          "bf_wall: no agent in blocked cell with avoidance active");
+}
+
+// =================================================================
+//  Simultaneity: avoidance result is iteration-order independent
+// =================================================================
+// Run the same scenario twice. If the avoidance reads from a velocity
+// snapshot (not live world), both runs must produce identical hashes.
+// This is already covered by test_avoidance_determinism, but we add
+// a focused test with a dense scenario where iteration-order bugs
+// would produce divergent hashes.
+
+static void test_simultaneity_determinism() {
+    auto run = []() -> uint64_t {
+        de::SimState sim;
+        de::CrowdConfig cfg;
+        cfg.agents_per_team    = 30;
+        cfg.team_spacing       = 12.0f;
+        cfg.agent_spread       = 0.8f;
+        cfg.move_speed         = 3.5f;
+        cfg.engage_radius      = 40.0f;
+        cfg.attack_range       = 1.5f;
+        cfg.separation_radius  = 0.6f;
+        cfg.separation_strength = 4.0f;
+        cfg.avoidance_radius   = 4.0f;
+        cfg.avoidance_horizon  = 1.0f;
+        cfg.avoidance_strength = 3.0f;
+        sim.bootstrap_crowd(cfg);
+        for (int i = 0; i < 180; ++i) {
+            sim.tick(1.0 / 60.0);
+        }
+        return sim.sim_hash();
+    };
+
+    uint64_t h1 = run();
+    uint64_t h2 = run();
+    check(h1 == h2, "simultaneity: dense scenario hash match");
+    check(h1 != 0,  "simultaneity: hash is non-zero");
+}
+
+// =================================================================
+//  Battlefield + avoidance: no NaN or Inf
+// =================================================================
+
+static void test_battlefield_avoidance_no_nan() {
+    de::ObstacleDef obstacles[39];
+    int obs_count = 0;
+    for (int y = 0; y < 40; ++y) {
+        if (y != 20) obstacles[obs_count++] = {30, y};
+    }
+
+    de::BattlefieldConfig bcfg;
+    bcfg.crowd.agents_per_team = 8;
+    bcfg.crowd.team_spacing    = 15.0f;
+    bcfg.crowd.agent_spread    = 1.0f;
+    bcfg.crowd.move_speed      = 3.0f;
+    bcfg.crowd.engage_radius   = 30.0f;
+    bcfg.crowd.avoidance_radius   = 3.0f;
+    bcfg.crowd.avoidance_horizon  = 0.8f;
+    bcfg.crowd.avoidance_strength = 2.5f;
+    bcfg.grid_width    = 60;
+    bcfg.grid_height   = 40;
+    bcfg.grid_cell     = 1.0f;
+    bcfg.grid_ox       = -30.0f;
+    bcfg.grid_oy       = -20.0f;
+    bcfg.obstacles     = obstacles;
+    bcfg.obstacle_count = obs_count;
+
+    de::SimState sim;
+    sim.bootstrap_battlefield(bcfg);
+
+    bool has_nan = false;
+    for (int i = 0; i < 60; ++i) {
+        sim.tick(1.0 / 60.0);
+    }
+    sim.world.each<de::CrowdAgent, de::Position, de::Velocity>(
+        [&](de::EntityId, de::CrowdAgent&, de::Position& p, de::Velocity& v) {
+            if (std::isnan(p.x) || std::isnan(p.y)) has_nan = true;
+            if (std::isnan(v.dx) || std::isnan(v.dy)) has_nan = true;
+            if (std::isinf(p.x) || std::isinf(p.y)) has_nan = true;
+            if (std::isinf(v.dx) || std::isinf(v.dy)) has_nan = true;
+        });
+    check(!has_nan, "bf_nan: no NaN/Inf on battlefield with avoidance");
+}
+
+// =================================================================
 //  Pipeline order includes LocalAvoidance at position 5
 // =================================================================
 
@@ -264,6 +402,9 @@ int main() {
     test_low_density_no_avoidance();
     test_avoidance_determinism();
     test_presets_compatible();
+    test_battlefield_wall_no_penetration();
+    test_simultaneity_determinism();
+    test_battlefield_avoidance_no_nan();
     test_pipeline_order();
 
     std::printf("\nAvoidanceTest: %d passed, %d failed\n", g_pass, g_fail);

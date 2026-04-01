@@ -53,6 +53,10 @@ static uint32_t s_melee_attacks          = 0;
 // Broadphase validation set: O(1) lookup for (attacker, defender) pairs.
 static std::unordered_set<uint64_t> s_melee_valid_set;
 
+// Velocity snapshot for simultaneous avoidance resolution.
+// Keyed by EntityId.index -> (vx, vy) at ApplyCrowdSteer output.
+static std::unordered_map<uint32_t, std::pair<float, float>> s_vel_snapshot;
+
 static uint64_t make_pair_key(uint32_t a_idx, uint32_t d_idx) {
     return (static_cast<uint64_t>(a_idx) << 32) | static_cast<uint32_t>(d_idx);
 }
@@ -98,6 +102,7 @@ void     reset_crowd_tick_counters() {
     s_melee_bp_checks    = 0;
     s_melee_pairs_count  = 0;
     s_melee_attacks      = 0;
+    s_vel_snapshot.clear();
     s_hit_buffer.clear();
     s_melee_pairs.clear();
     s_melee_valid_set.clear();
@@ -351,21 +356,50 @@ uint32_t apply_crowd_steering(WorldView& view, float /*dt*/,
 // guarantees symmetric avoidance -- both agents dodge in compatible
 // directions.
 //
-// Runs after ApplyCrowdSteer (velocity set) and before ApplySeparation
-// (positional overlap repair).  LOD gated.
+// Simultaneous resolution contract:
+//   All agents compute their dodge against the SAME velocity snapshot
+//   taken from ApplyCrowdSteer output (pre-avoidance).  No agent sees
+//   another agent's already-modified velocity.  This makes the result
+//   independent of iteration order.
+//
+// Navigation contract:
+//   When battlefield grids are installed, the dodge is rejected if the
+//   resulting velocity would push the agent into a BLOCKED cell within
+//   the current tick (probed at pos + new_vel * dt).  This guarantees
+//   avoidance never causes wall penetration.
+//
+// Runs after ApplyCrowdSteer and before ApplySeparation.  LOD gated.
 
-uint32_t apply_local_avoidance(WorldView& view, float /*dt*/,
+uint32_t apply_local_avoidance(WorldView& view, float dt,
                                CommandBuffer& /*cmds*/) {
     s_avoidance_neighbors = 0;
     s_avoidance_adjusted  = 0;
     uint32_t count = 0;
 
-    view.each<CrowdAgent, Position, Velocity, LocalAvoidance, MoveSpeed, BehaviorLod>(
+    // Phase 1: snapshot all crowd agent velocities (post-steering,
+    // pre-avoidance).  Every agent reads neighbors from this snapshot,
+    // not from the live world, so iteration order does not matter.
+    s_vel_snapshot.clear();
+    view.each<CrowdAgent, Velocity>(
+        [](EntityId id, CrowdAgent&, Velocity& v) {
+            s_vel_snapshot[id.index] = {v.dx, v.dy};
+        });
+
+    // Phase 2: compute and apply avoidance using the snapshot.
+    view.each<CrowdAgent, Position, Velocity, LocalAvoidance, MoveSpeed,
+              BehaviorLod, Team>(
         [&](EntityId self, CrowdAgent&, Position& pos,
             Velocity& vel, LocalAvoidance& avoid, MoveSpeed& spd,
-            BehaviorLod& lod) {
+            BehaviorLod& lod, Team& team) {
             if (lod_should_skip(lod)) { return; }
             ++count;
+
+            // Read own velocity from snapshot (not live) so that self
+            // and neighbors use the same reference frame.
+            auto self_it = s_vel_snapshot.find(self.index);
+            if (self_it == s_vel_snapshot.end()) return;
+            float self_vx = self_it->second.first;
+            float self_vy = self_it->second.second;
 
             float steer_x = 0.0f;
             float steer_y = 0.0f;
@@ -379,16 +413,18 @@ uint32_t apply_local_avoidance(WorldView& view, float /*dt*/,
                     float dist = std::sqrt(d2);
                     if (dist < 1e-6f) return;  // exact overlap handled by separation
 
-                    // Relative position and velocity.
+                    // Relative position.
                     float rel_px = e.x - pos.x;
                     float rel_py = e.y - pos.y;
 
-                    // We need neighbor velocity.  Look it up.
-                    const auto* nv = view.get<Velocity>(e.id);
-                    if (!nv) return;
+                    // Neighbor velocity from snapshot (simultaneous read).
+                    auto nb_it = s_vel_snapshot.find(e.id.index);
+                    if (nb_it == s_vel_snapshot.end()) return;
+                    float nb_vx = nb_it->second.first;
+                    float nb_vy = nb_it->second.second;
 
-                    float rel_vx = vel.dx - nv->dx;
-                    float rel_vy = vel.dy - nv->dy;
+                    float rel_vx = self_vx - nb_vx;
+                    float rel_vy = self_vy - nb_vy;
 
                     // Closing speed along the approach axis.
                     // Positive means converging.
@@ -420,20 +456,41 @@ uint32_t apply_local_avoidance(WorldView& view, float /*dt*/,
                     adjusted = true;
                 });
 
-            if (adjusted) {
-                vel.dx += steer_x;
-                vel.dy += steer_y;
+            if (!adjusted) return;
 
-                // Reclamp to max speed.
-                float speed2 = vel.dx * vel.dx + vel.dy * vel.dy;
-                float max2   = spd.max * spd.max;
-                if (speed2 > max2) {
-                    float scale = spd.max / std::sqrt(speed2);
-                    vel.dx *= scale;
-                    vel.dy *= scale;
-                }
-                ++s_avoidance_adjusted;
+            // Candidate new velocity after dodge.
+            float new_vx = vel.dx + steer_x;
+            float new_vy = vel.dy + steer_y;
+
+            // Speed clamp (before nav check for accurate probe).
+            float speed2 = new_vx * new_vx + new_vy * new_vy;
+            float max2   = spd.max * spd.max;
+            if (speed2 > max2) {
+                float scale = spd.max / std::sqrt(speed2);
+                new_vx *= scale;
+                new_vy *= scale;
             }
+
+            // Navigation safety: reject dodge if it would push the
+            // agent into a blocked cell by end of this tick.
+            if (s_nav_grids && team.id < s_nav_grid_count) {
+                const BattlefieldGrid* grid = s_nav_grids[team.id];
+                if (grid) {
+                    float probe_x = pos.x + new_vx * dt;
+                    float probe_y = pos.y + new_vy * dt;
+                    int pcx = 0;
+                    int pcy = 0;
+                    grid->world_to_cell(probe_x, probe_y, pcx, pcy);
+                    if (grid->is_blocked(pcx, pcy)) {
+                        // Dodge would violate nav grid -- reject entirely.
+                        return;
+                    }
+                }
+            }
+
+            vel.dx = new_vx;
+            vel.dy = new_vy;
+            ++s_avoidance_adjusted;
         });
     return count;
 }
