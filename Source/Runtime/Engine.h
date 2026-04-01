@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Platform/Window.h"
+#include "Render/RenderCamera.h"
 #include "Render/RenderFrame.h"
 #include "Runtime/Clock.h"
 #include "Runtime/EngineConfig.h"
@@ -25,6 +26,7 @@ struct Engine {
     const FrameTelemetry& frame_telemetry() const;
     const SimState& sim_state() const;
     const RenderFrame& render_frame() const;
+    const RenderCamera& render_camera() const;
 
 private:
     EngineConfig config_;
@@ -40,6 +42,7 @@ private:
     Renderer* renderer_        = nullptr;
     bool      renderer_active_ = false;
     RenderFrame render_frame_;
+    RenderCamera camera_;
 
     void begin_frame();
     void tick_fixed_steps();

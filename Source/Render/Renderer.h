@@ -20,6 +20,7 @@
 namespace de {
 
 struct RenderFrame;
+struct RenderCamera;
 
 // Minimal DX12 renderer -- clears screen and draws crowd as colored quads.
 // Synchronous (CPU waits for GPU each frame). No depth buffer, no MSAA.
@@ -31,7 +32,8 @@ struct Renderer {
     Renderer& operator=(const Renderer&) = delete;
 
     bool init(HWND hwnd, int32_t width, int32_t height);
-    void render(const RenderFrame& frame);
+    void render(const RenderFrame& frame, const RenderCamera& camera);
+    bool resize(int32_t width, int32_t height);
     void shutdown();
 
 private:

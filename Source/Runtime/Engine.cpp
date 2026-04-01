@@ -97,6 +97,10 @@ const RenderFrame& Engine::render_frame() const {
     return render_frame_;
 }
 
+const RenderCamera& Engine::render_camera() const {
+    return camera_;
+}
+
 void Engine::begin_frame() {
     ScopeTimer t(&wip_telemetry_.begin_frame_s);
     clock_.update();
@@ -143,12 +147,18 @@ void Engine::update_presentation(double alpha) {
     (void)alpha;
     extract_render_frame(sim_.world, frame_info_.sim_tick_index,
                          frame_info_.frame_index, render_frame_);
+
+    float w = static_cast<float>(window_.width());
+    float h = static_cast<float>(window_.height());
+    float aspect = (h > 0.0f) ? (w / h) : 1.0f;
+    camera_ = auto_frame_crowd(render_frame_, aspect);
 }
 
 void Engine::render() {
     ScopeTimer t(&wip_telemetry_.render_s);
     if (renderer_active_) {
-        renderer_->render(render_frame_);
+        renderer_->resize(window_.width(), window_.height());
+        renderer_->render(render_frame_, camera_);
     }
 }
 

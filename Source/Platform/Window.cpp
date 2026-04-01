@@ -13,6 +13,12 @@ LRESULT CALLBACK Window::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
         SetWindowLongPtrA(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(cs->lpCreateParams));
         return 0;
     }
+    case WM_SIZE:
+        if (self && wparam != SIZE_MINIMIZED) {
+            self->width_  = static_cast<int32_t>(LOWORD(lparam));
+            self->height_ = static_cast<int32_t>(HIWORD(lparam));
+        }
+        return 0;
     case WM_CLOSE:
         if (self) self->open_ = false;
         return 0;

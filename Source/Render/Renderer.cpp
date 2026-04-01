@@ -1,4 +1,5 @@
 #include "Render/Renderer.h"
+#include "Render/RenderCamera.h"
 #include "Render/RenderFrame.h"
 
 #pragma warning(push, 3)
@@ -270,7 +271,7 @@ bool Renderer::init(HWND hwnd, int32_t width, int32_t height) {
 
 // -- Render -------------------------------------------------------------
 
-void Renderer::render(const RenderFrame& frame) {
+void Renderer::render(const RenderFrame& frame, const RenderCamera& camera) {
     wait_for_gpu();
 
     cmd_alloc_->Reset();
@@ -305,14 +306,9 @@ void Renderer::render(const RenderFrame& frame) {
         }
     }
 
-    // Orthographic projection: world [-hw, +hw] x [-hh, +hh] -> NDC [-1, 1].
-    float hw = 50.0f;
-    float hh = hw * static_cast<float>(height_) / static_cast<float>(width_);
+    // Build ortho matrix from camera.
     float ortho[16] = {};
-    ortho[0]  = 1.0f / hw;    // row 0 col 0
-    ortho[5]  = 1.0f / hh;    // row 1 col 1
-    ortho[10] = 1.0f;          // row 2 col 2
-    ortho[15] = 1.0f;          // row 3 col 3
+    camera.build_ortho(ortho);
 
     cmd_list_->SetGraphicsRootSignature(root_sig_.Get());
     cmd_list_->SetGraphicsRoot32BitConstants(0, 16, ortho, 0);
@@ -376,6 +372,39 @@ void Renderer::render(const RenderFrame& frame) {
     }
 
     frame_index_ = swap_chain_->GetCurrentBackBufferIndex();
+}
+
+// -- Resize -------------------------------------------------------------
+
+bool Renderer::resize(int32_t width, int32_t height) {
+    if (width <= 0 || height <= 0) return false;
+    if (width == width_ && height == height_) return true;
+
+    wait_for_gpu();
+
+    // Release render target views before resizing.
+    for (uint32_t i = 0; i < k_frame_count; ++i)
+        render_targets_[i].Reset();
+
+    HRESULT hr = swap_chain_->ResizeBuffers(
+        k_frame_count, static_cast<UINT>(width), static_cast<UINT>(height),
+        DXGI_FORMAT_R8G8B8A8_UNORM, 0);
+    if (FAILED(hr)) return false;
+
+    width_  = width;
+    height_ = height;
+    frame_index_ = swap_chain_->GetCurrentBackBufferIndex();
+
+    // Recreate RTVs.
+    D3D12_CPU_DESCRIPTOR_HANDLE rtv = rtv_heap_->GetCPUDescriptorHandleForHeapStart();
+    for (uint32_t i = 0; i < k_frame_count; ++i) {
+        if (FAILED(swap_chain_->GetBuffer(i, IID_PPV_ARGS(&render_targets_[i]))))
+            return false;
+        device_->CreateRenderTargetView(render_targets_[i].Get(), nullptr, rtv);
+        rtv.ptr += rtv_size_;
+    }
+
+    return true;
 }
 
 // -- Sync ---------------------------------------------------------------

@@ -22,6 +22,8 @@ add_executable(DEngine WIN32
     Runtime/SimState.cpp
     Platform/Window.h
     Platform/Window.cpp
+    Render/RenderCamera.h
+    Render/RenderCamera.cpp
     Render/RenderFrame.h
     Render/RenderFrame.cpp
     Render/Renderer.h

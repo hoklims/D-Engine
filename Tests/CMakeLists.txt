@@ -97,6 +97,13 @@ target_link_libraries(BudgetResponseTest PRIVATE DEcs)
 target_include_directories(BudgetResponseTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
 add_test(NAME BudgetResponseTest COMMAND BudgetResponseTest)
 
+add_executable(CameraTest
+    CameraTest.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/RenderCamera.cpp
+)
+target_include_directories(CameraTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
+add_test(NAME CameraTest COMMAND CameraTest)
+
 add_executable(RenderFrameTest
     RenderFrameTest.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/RenderFrame.cpp
@@ -126,6 +133,7 @@ add_executable(EngineRuntimeTest
     ${CMAKE_SOURCE_DIR}/Source/Runtime/FixedStep.cpp
     ${CMAKE_SOURCE_DIR}/Source/Runtime/ScopeTimer.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/RenderFrame.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/RenderCamera.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/Renderer.cpp
     ${CMAKE_SOURCE_DIR}/Source/Platform/Window.cpp
 )
