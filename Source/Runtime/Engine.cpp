@@ -101,6 +101,10 @@ const RenderCamera& Engine::render_camera() const {
     return camera_;
 }
 
+const RenderStats& Engine::render_stats() const {
+    return render_stats_;
+}
+
 void Engine::begin_frame() {
     ScopeTimer t(&wip_telemetry_.begin_frame_s);
     clock_.update();
@@ -162,6 +166,11 @@ void Engine::render() {
             return;
         }
         renderer_->render(render_frame_, camera_);
+        render_stats_ = renderer_->stats();
+    } else {
+        // Headless: populate stats from RenderFrame for telemetry consistency.
+        render_stats_ = {};
+        render_stats_.extracted_count = render_frame_.extracted_count;
     }
 }
 

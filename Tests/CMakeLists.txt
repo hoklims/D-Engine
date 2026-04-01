@@ -104,6 +104,16 @@ add_executable(CameraTest
 target_include_directories(CameraTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
 add_test(NAME CameraTest COMMAND CameraTest)
 
+add_executable(InstanceTest
+    InstanceTest.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/RenderFrame.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/SimState.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/CrowdSystems.cpp
+)
+target_link_libraries(InstanceTest PRIVATE DEcs)
+target_include_directories(InstanceTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
+add_test(NAME InstanceTest COMMAND InstanceTest)
+
 add_executable(RenderFrameTest
     RenderFrameTest.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/RenderFrame.cpp

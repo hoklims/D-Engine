@@ -14,35 +14,48 @@ Renderer::~Renderer() {
     shutdown();
 }
 
-// -- Inline HLSL --------------------------------------------------------
+// -- Inline HLSL (instanced) --------------------------------------------
 
 static const char k_shader_src[] = R"(
 cbuffer OrthoMatrix : register(b0) {
     float4x4 ortho;
 };
 
-struct VSIn  { float2 pos : POSITION; float4 col : COLOR; };
-struct PSIn  { float4 pos : SV_POSITION; float4 col : COLOR; };
+// Per-vertex: local quad position (slot 0).
+struct VSIn {
+    float2 local_pos : POSITION;
+    // Per-instance data (slot 1).
+    float2 world_pos : INST_POS;
+    float  half_size : INST_SIZE;
+    float4 color     : INST_COLOR;
+};
+
+struct PSIn {
+    float4 pos : SV_POSITION;
+    float4 col : COLOR;
+};
 
 PSIn VSMain(VSIn i) {
     PSIn o;
-    o.pos = mul(ortho, float4(i.pos, 0.0, 1.0));
-    o.col = i.col;
+    float2 wp = i.world_pos + i.local_pos * i.half_size;
+    o.pos = mul(ortho, float4(wp, 0.0, 1.0));
+    o.col = i.color;
     return o;
 }
 
 float4 PSMain(PSIn i) : SV_TARGET { return i.col; }
 )";
 
-// -- Vertex layout ------------------------------------------------------
+// -- Instance data layout -----------------------------------------------
 
-struct RenderVertex {
-    float x, y;
+struct InstanceData {
+    float pos_x;
+    float pos_y;
+    float half_size;
     float r, g, b, a;
 };
 
-static constexpr uint32_t k_verts_per_agent = 6;
-static constexpr float    k_half_size       = 0.3f;
+static constexpr float k_half_size = 0.3f;
 
 static constexpr float k_team_colors[][4] = {
     { 0.9f, 0.2f, 0.2f, 1.0f },   // team 0: red
@@ -51,6 +64,24 @@ static constexpr float k_team_colors[][4] = {
     { 0.9f, 0.8f, 0.1f, 1.0f },   // team 3: yellow
 };
 static constexpr uint32_t k_team_color_count = 4;
+
+// -- Quad geometry ------------------------------------------------------
+
+struct QuadVertex {
+    float x, y;
+};
+
+// Unit quad: corners at (-1,-1) to (+1,+1), scaled by half_size in shader.
+static constexpr QuadVertex k_quad_verts[] = {
+    { -1.0f,  1.0f },  // TL
+    {  1.0f,  1.0f },  // TR
+    {  1.0f, -1.0f },  // BR
+    { -1.0f, -1.0f },  // BL
+};
+static constexpr uint16_t k_quad_indices[] = {
+    0, 1, 3,   // TL, TR, BL
+    1, 2, 3,   // TR, BR, BL
+};
 
 // -- Device creation ----------------------------------------------------
 
@@ -128,12 +159,18 @@ bool Renderer::create_pipeline() {
             rs_blob->GetBufferSize(), IID_PPV_ARGS(&root_sig_))))
         return false;
 
-    // Input layout.
+    // Input layout: slot 0 = per-vertex quad, slot 1 = per-instance data.
     D3D12_INPUT_ELEMENT_DESC il[] = {
-        { "POSITION", 0, DXGI_FORMAT_R32G32_FLOAT,      0,  0,
+        // Slot 0: per-vertex.
+        { "POSITION",   0, DXGI_FORMAT_R32G32_FLOAT,       0,  0,
           D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0,  8,
-          D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        // Slot 1: per-instance.
+        { "INST_POS",   0, DXGI_FORMAT_R32G32_FLOAT,       1,  0,
+          D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1 },
+        { "INST_SIZE",  0, DXGI_FORMAT_R32_FLOAT,          1,  8,
+          D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1 },
+        { "INST_COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 12,
+          D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1 },
     };
 
     // PSO.
@@ -151,8 +188,43 @@ bool Renderer::create_pipeline() {
     pd.NumRenderTargets                       = 1;
     pd.RTVFormats[0]                          = DXGI_FORMAT_R8G8B8A8_UNORM;
     pd.SampleDesc.Count                       = 1;
+    pd.IBStripCutValue                        = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED;
 
     return SUCCEEDED(device_->CreateGraphicsPipelineState(&pd, IID_PPV_ARGS(&pso_)));
+}
+
+// -- Helper: create a small upload-heap buffer with initial data ---------
+
+static bool create_upload_buffer(ID3D12Device* dev,
+                                 Microsoft::WRL::ComPtr<ID3D12Resource>& out,
+                                 const void* data, UINT bytes) {
+    D3D12_HEAP_PROPERTIES hp = {};
+    hp.Type = D3D12_HEAP_TYPE_UPLOAD;
+
+    D3D12_RESOURCE_DESC rd = {};
+    rd.Dimension        = D3D12_RESOURCE_DIMENSION_BUFFER;
+    rd.Width            = bytes;
+    rd.Height           = 1;
+    rd.DepthOrArraySize = 1;
+    rd.MipLevels        = 1;
+    rd.SampleDesc.Count = 1;
+    rd.Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+    if (FAILED(dev->CreateCommittedResource(
+            &hp, D3D12_HEAP_FLAG_NONE, &rd,
+            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+            IID_PPV_ARGS(&out))))
+        return false;
+
+    if (data) {
+        void* mapped = nullptr;
+        D3D12_RANGE rr = {};
+        if (FAILED(out->Map(0, &rr, &mapped)))
+            return false;
+        std::memcpy(mapped, data, bytes);
+        out->Unmap(0, nullptr);
+    }
+    return true;
 }
 
 // -- Init ---------------------------------------------------------------
@@ -160,9 +232,8 @@ bool Renderer::create_pipeline() {
 bool Renderer::init(HWND hwnd, int32_t width, int32_t height) {
     width_  = width;
     height_ = height;
+    stats_  = {};
 
-    // Single-exit cleanup: any break triggers shutdown() which releases
-    // every resource allocated so far (ComPtrs, HANDLE, mapped pointer).
     do {
         if (!create_device()) break;
 
@@ -235,16 +306,26 @@ bool Renderer::init(HWND hwnd, int32_t width, int32_t height) {
         // Pipeline (shaders + root sig + PSO).
         if (!create_pipeline()) break;
 
-        // Vertex buffer (upload heap, persistently mapped).
-        vb_capacity_ = k_max_render_agents * k_verts_per_agent;
-        UINT vb_bytes = vb_capacity_ * static_cast<UINT>(sizeof(RenderVertex));
+        // Static quad vertex buffer (4 vertices).
+        if (!create_upload_buffer(device_.Get(), quad_vb_,
+                k_quad_verts, sizeof(k_quad_verts)))
+            break;
+
+        // Static quad index buffer (6 indices).
+        if (!create_upload_buffer(device_.Get(), quad_ib_,
+                k_quad_indices, sizeof(k_quad_indices)))
+            break;
+
+        // Dynamic instance buffer (upload heap, persistently mapped).
+        ib_capacity_ = k_max_render_agents;
+        UINT ib_bytes = ib_capacity_ * static_cast<UINT>(sizeof(InstanceData));
 
         D3D12_HEAP_PROPERTIES hp = {};
         hp.Type = D3D12_HEAP_TYPE_UPLOAD;
 
         D3D12_RESOURCE_DESC rd = {};
         rd.Dimension          = D3D12_RESOURCE_DIMENSION_BUFFER;
-        rd.Width              = vb_bytes;
+        rd.Width              = ib_bytes;
         rd.Height             = 1;
         rd.DepthOrArraySize   = 1;
         rd.MipLevels          = 1;
@@ -254,57 +335,57 @@ bool Renderer::init(HWND hwnd, int32_t width, int32_t height) {
         if (FAILED(device_->CreateCommittedResource(
                 &hp, D3D12_HEAP_FLAG_NONE, &rd,
                 D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                IID_PPV_ARGS(&vertex_buffer_))))
+                IID_PPV_ARGS(&instance_buffer_))))
             break;
 
         D3D12_RANGE rr = {};
-        if (FAILED(vertex_buffer_->Map(0, &rr, &vb_mapped_)))
+        if (FAILED(instance_buffer_->Map(0, &rr, &ib_mapped_)))
             break;
 
         return true;
     } while (false);
 
-    // Partial init failed -- release everything already created.
     shutdown();
     return false;
 }
 
-// -- Render -------------------------------------------------------------
+// -- Render (instanced) -------------------------------------------------
 
 void Renderer::render(const RenderFrame& frame, const RenderCamera& camera) {
     wait_for_gpu();
 
-    cmd_alloc_->Reset();
-    cmd_list_->Reset(cmd_alloc_.Get(), pso_.Get());
-
-    // Fill vertex buffer with quads.
-    uint32_t vert_count = 0;
+    // Fill instance buffer.
+    uint32_t instance_count = 0;
     {
-        auto* v = static_cast<RenderVertex*>(vb_mapped_);
-        for (uint32_t i = 0; i < frame.extracted_count; ++i) {
-            if (vert_count + k_verts_per_agent > vb_capacity_) break;
+        auto* inst = static_cast<InstanceData*>(ib_mapped_);
+        uint32_t limit = (frame.extracted_count < ib_capacity_)
+                         ? frame.extracted_count : ib_capacity_;
 
+        for (uint32_t i = 0; i < limit; ++i) {
             const auto& a = frame.agents[i];
-            float cx = a.x;
-            float cy = a.y;
-            float hs = k_half_size;
-
             uint32_t ci = (a.team_id < k_team_color_count) ? a.team_id : 0u;
             float hp = (a.health_pct > 0.0f) ? a.health_pct : 0.1f;
-            float cr = k_team_colors[ci][0] * hp;
-            float cg = k_team_colors[ci][1] * hp;
-            float cb = k_team_colors[ci][2] * hp;
-            float ca = k_team_colors[ci][3];
 
-            // Quad: 2 triangles (TL, TR, BL) + (TR, BR, BL).
-            v[vert_count++] = { cx - hs, cy + hs, cr, cg, cb, ca };
-            v[vert_count++] = { cx + hs, cy + hs, cr, cg, cb, ca };
-            v[vert_count++] = { cx - hs, cy - hs, cr, cg, cb, ca };
-            v[vert_count++] = { cx + hs, cy + hs, cr, cg, cb, ca };
-            v[vert_count++] = { cx + hs, cy - hs, cr, cg, cb, ca };
-            v[vert_count++] = { cx - hs, cy - hs, cr, cg, cb, ca };
+            inst[i].pos_x     = a.x;
+            inst[i].pos_y     = a.y;
+            inst[i].half_size = k_half_size;
+            inst[i].r         = k_team_colors[ci][0] * hp;
+            inst[i].g         = k_team_colors[ci][1] * hp;
+            inst[i].b         = k_team_colors[ci][2] * hp;
+            inst[i].a         = k_team_colors[ci][3];
         }
+        instance_count = limit;
     }
+
+    // Update stats.
+    stats_.extracted_count = frame.extracted_count;
+    stats_.instance_count  = instance_count;
+    stats_.draw_call_count = (instance_count > 0) ? 1u : 0u;
+    stats_.dropped_count   = (frame.extracted_count > ib_capacity_)
+                             ? (frame.extracted_count - ib_capacity_) : 0u;
+
+    cmd_alloc_->Reset();
+    cmd_list_->Reset(cmd_alloc_.Get(), pso_.Get());
 
     // Build ortho matrix from camera.
     float ortho[16] = {};
@@ -340,15 +421,33 @@ void Renderer::render(const RenderFrame& frame, const RenderCamera& camera) {
     cmd_list_->ClearRenderTargetView(rtv, clear, 0, nullptr);
     cmd_list_->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
 
-    // Draw crowd quads.
-    if (vert_count > 0) {
+    // Draw instanced crowd quads.
+    if (instance_count > 0) {
         cmd_list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+        // Slot 0: quad vertices.
         D3D12_VERTEX_BUFFER_VIEW vbv = {};
-        vbv.BufferLocation = vertex_buffer_->GetGPUVirtualAddress();
-        vbv.SizeInBytes    = vert_count * static_cast<UINT>(sizeof(RenderVertex));
-        vbv.StrideInBytes  = static_cast<UINT>(sizeof(RenderVertex));
-        cmd_list_->IASetVertexBuffers(0, 1, &vbv);
-        cmd_list_->DrawInstanced(vert_count, 1, 0, 0);
+        vbv.BufferLocation = quad_vb_->GetGPUVirtualAddress();
+        vbv.SizeInBytes    = sizeof(k_quad_verts);
+        vbv.StrideInBytes  = sizeof(QuadVertex);
+
+        // Slot 1: instance data.
+        D3D12_VERTEX_BUFFER_VIEW ibv = {};
+        ibv.BufferLocation = instance_buffer_->GetGPUVirtualAddress();
+        ibv.SizeInBytes    = instance_count * static_cast<UINT>(sizeof(InstanceData));
+        ibv.StrideInBytes  = static_cast<UINT>(sizeof(InstanceData));
+
+        D3D12_VERTEX_BUFFER_VIEW views[] = { vbv, ibv };
+        cmd_list_->IASetVertexBuffers(0, 2, views);
+
+        // Index buffer.
+        D3D12_INDEX_BUFFER_VIEW ixv = {};
+        ixv.BufferLocation = quad_ib_->GetGPUVirtualAddress();
+        ixv.SizeInBytes    = sizeof(k_quad_indices);
+        ixv.Format         = DXGI_FORMAT_R16_UINT;
+        cmd_list_->IASetIndexBuffer(&ixv);
+
+        cmd_list_->DrawIndexedInstanced(6, instance_count, 0, 0, 0);
     }
 
     // Transition: RENDER_TARGET -> PRESENT.
@@ -363,7 +462,6 @@ void Renderer::render(const RenderFrame& frame, const RenderCamera& camera) {
 
     swap_chain_->Present(1, 0);
 
-    // Sync: wait for this frame to finish before reusing the allocator.
     ++fence_value_;
     cmd_queue_->Signal(fence_.Get(), fence_value_);
     if (fence_->GetCompletedValue() < fence_value_) {
@@ -382,7 +480,6 @@ bool Renderer::resize(int32_t width, int32_t height) {
 
     wait_for_gpu();
 
-    // Release render target views before resizing.
     for (uint32_t i = 0; i < k_frame_count; ++i)
         render_targets_[i].Reset();
 
@@ -395,7 +492,6 @@ bool Renderer::resize(int32_t width, int32_t height) {
     height_ = height;
     frame_index_ = swap_chain_->GetCurrentBackBufferIndex();
 
-    // Recreate RTVs.
     D3D12_CPU_DESCRIPTOR_HANDLE rtv = rtv_heap_->GetCPUDescriptorHandleForHeapStart();
     for (uint32_t i = 0; i < k_frame_count; ++i) {
         if (FAILED(swap_chain_->GetBuffer(i, IID_PPV_ARGS(&render_targets_[i]))))
@@ -424,9 +520,9 @@ void Renderer::wait_for_gpu() {
 void Renderer::shutdown() {
     wait_for_gpu();
 
-    if (vb_mapped_) {
-        vertex_buffer_->Unmap(0, nullptr);
-        vb_mapped_ = nullptr;
+    if (ib_mapped_) {
+        instance_buffer_->Unmap(0, nullptr);
+        ib_mapped_ = nullptr;
     }
     if (fence_event_) {
         CloseHandle(fence_event_);

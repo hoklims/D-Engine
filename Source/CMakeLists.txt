@@ -25,6 +25,7 @@ add_executable(DEngine WIN32
     Render/RenderCamera.h
     Render/RenderCamera.cpp
     Render/RenderFrame.h
+    Render/RenderStats.h
     Render/RenderFrame.cpp
     Render/Renderer.h
     Render/Renderer.cpp

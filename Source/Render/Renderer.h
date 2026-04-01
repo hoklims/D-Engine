@@ -17,12 +17,15 @@
 
 #include <cstdint>
 
+#include "Render/RenderStats.h"
+
 namespace de {
 
 struct RenderFrame;
 struct RenderCamera;
 
-// Minimal DX12 renderer -- clears screen and draws crowd as colored quads.
+// Minimal DX12 instanced renderer -- draws crowd as colored quads.
+// One shared quad (4 verts + 6 indices), one instance per agent.
 // Synchronous (CPU waits for GPU each frame). No depth buffer, no MSAA.
 struct Renderer {
     Renderer() = default;
@@ -35,6 +38,8 @@ struct Renderer {
     void render(const RenderFrame& frame, const RenderCamera& camera);
     bool resize(int32_t width, int32_t height);
     void shutdown();
+
+    const RenderStats& stats() const { return stats_; }
 
 private:
     static constexpr uint32_t k_frame_count = 2;
@@ -57,12 +62,20 @@ private:
 
     ComPtr<ID3D12RootSignature>       root_sig_;
     ComPtr<ID3D12PipelineState>       pso_;
-    ComPtr<ID3D12Resource>            vertex_buffer_;
-    void*                             vb_mapped_   = nullptr;
-    uint32_t                          vb_capacity_ = 0;
+
+    // Static quad geometry (4 verts + 6 indices).
+    ComPtr<ID3D12Resource>            quad_vb_;
+    ComPtr<ID3D12Resource>            quad_ib_;
+
+    // Dynamic instance buffer (upload heap, persistently mapped).
+    ComPtr<ID3D12Resource>            instance_buffer_;
+    void*                             ib_mapped_     = nullptr;
+    uint32_t                          ib_capacity_   = 0;
 
     int32_t width_  = 0;
     int32_t height_ = 0;
+
+    RenderStats stats_;
 
     void wait_for_gpu();
     bool create_device();

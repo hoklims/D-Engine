@@ -3,6 +3,7 @@
 #include "Platform/Window.h"
 #include "Render/RenderCamera.h"
 #include "Render/RenderFrame.h"
+#include "Render/RenderStats.h"
 #include "Runtime/Clock.h"
 #include "Runtime/EngineConfig.h"
 #include "Runtime/FixedStep.h"
@@ -27,6 +28,7 @@ struct Engine {
     const SimState& sim_state() const;
     const RenderFrame& render_frame() const;
     const RenderCamera& render_camera() const;
+    const RenderStats& render_stats() const;
 
 private:
     EngineConfig config_;
@@ -43,6 +45,7 @@ private:
     bool      renderer_active_ = false;
     RenderFrame render_frame_;
     RenderCamera camera_;
+    RenderStats render_stats_;
 
     void begin_frame();
     void tick_fixed_steps();
