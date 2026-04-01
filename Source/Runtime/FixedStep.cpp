@@ -37,6 +37,8 @@ FixedStepResult FixedStep::consume(double frame_delta) {
     return {steps, alpha, clamped, cap_hit};
 }
 
+void FixedStep::reset() { accumulator_ = 0.0; }
+
 double FixedStep::step_dt() const { return step_dt_; }
 double FixedStep::accumulator() const { return accumulator_; }
 

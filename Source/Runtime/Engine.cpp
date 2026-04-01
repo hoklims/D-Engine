@@ -133,6 +133,10 @@ DebugControls& Engine::debug_controls_mut() {
     return debug_;
 }
 
+const FixedStep& Engine::fixed_step() const {
+    return fixed_step_;
+}
+
 // -- Debug controls -------------------------------------------------
 
 void Engine::process_debug_input() {
@@ -182,6 +186,7 @@ void Engine::apply_debug_actions() {
         default:                      sim_.bootstrap_crowd();         break;
         }
         frame_info_ = {};
+        fixed_step_.reset();
     }
 
     // Scene switch.
@@ -196,6 +201,7 @@ void Engine::apply_debug_actions() {
         default:                      sim_.bootstrap_crowd();         break;
         }
         frame_info_ = {};
+        fixed_step_.reset();
     }
 }
 

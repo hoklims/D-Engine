@@ -122,6 +122,23 @@ static void test_alpha_never_negative() {
     check(r.alpha >= 0.0 && r.alpha < 1.0, "alpha in [0,1) after zero delta");
 }
 
+static void test_reset_clears_accumulator() {
+    de::FixedStep fs;
+    fs.init(60.0, 0.25, 8);
+
+    // Accumulate a partial step (no tick produced yet).
+    double half_dt = (1.0 / 60.0) * 0.5;
+    fs.consume(half_dt);
+    check(fs.accumulator() > 0.0, "reset: accumulator > 0 before reset");
+
+    fs.reset();
+    check(fs.accumulator() == 0.0, "reset: accumulator == 0 after reset");
+
+    // After reset, a half-step should NOT produce a tick (no residual).
+    de::FixedStepResult r = fs.consume(half_dt);
+    check(r.steps_taken == 0, "reset: half dt after reset produces 0 steps");
+}
+
 int main() {
     test_basic_accumulation();
     test_sub_step_accumulation();
@@ -133,6 +150,7 @@ int main() {
     test_init_invalid_max_steps();
     test_negative_delta();
     test_alpha_never_negative();
+    test_reset_clears_accumulator();
 
     std::printf("\nResults: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail > 0 ? 1 : 0;

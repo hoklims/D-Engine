@@ -251,6 +251,119 @@ static void test_pause_stops_ticking() {
 }
 
 // =================================================================
+//  Reset scene clears fixed-step accumulator
+// =================================================================
+
+static void test_reset_clears_accumulator() {
+    de::EngineConfig cfg;
+    cfg.start_scene     = de::StartScene::Crowd;
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "reset-accum: init ok");
+
+    // Run several frames so the accumulator may hold partial residual time.
+    for (int i = 0; i < 10; ++i)
+        engine.step_one_frame();
+
+    // Trigger reset via debug action.
+    de::DebugAction reset = {};
+    reset.reset_scene = true;
+    engine.debug_controls_mut().apply(reset);
+    engine.step_one_frame();
+
+    // After reset, accumulator must be clean (no residual from prev scene).
+    // The only accumulation is from the tiny clock delta of this one frame.
+    const auto& fi = engine.frame_info();
+    check(fi.frame_index == 1, "reset-accum: frame_index == 1 after reset");
+    check(fi.steps_this_frame <= 2,
+          "reset-accum: no burst of ticks after reset");
+
+    // Pause immediately, then check accumulator is near-zero.
+    de::DebugAction pause = {};
+    pause.toggle_pause = true;
+    engine.debug_controls_mut().apply(pause);
+    engine.step_one_frame();  // paused frame: no consume, just clock update
+
+    // The accumulator should be very small (only real clock deltas).
+    check(engine.fixed_step().accumulator() < engine.fixed_step().step_dt(),
+          "reset-accum: accumulator < step_dt after reset");
+
+    engine.shutdown();
+}
+
+// =================================================================
+//  Switch scene clears fixed-step accumulator
+// =================================================================
+
+static void test_switch_clears_accumulator() {
+    de::EngineConfig cfg;
+    cfg.start_scene     = de::StartScene::Crowd;
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "switch-accum: init ok");
+
+    // Run several frames.
+    for (int i = 0; i < 10; ++i)
+        engine.step_one_frame();
+
+    // Switch to Basic scene.
+    de::DebugAction sw = {};
+    sw.switch_scene = 0;  // Basic
+    engine.debug_controls_mut().apply(sw);
+    engine.step_one_frame();
+
+    const auto& fi = engine.frame_info();
+    check(fi.frame_index == 1, "switch-accum: frame_index == 1 after switch");
+    check(fi.steps_this_frame <= 2,
+          "switch-accum: no burst of ticks after switch");
+
+    // Verify accumulator is clean after switch.
+    check(engine.fixed_step().accumulator() < engine.fixed_step().step_dt(),
+          "switch-accum: accumulator < step_dt after switch");
+
+    engine.shutdown();
+}
+
+// =================================================================
+//  Reset then single-step: predictable tick count
+// =================================================================
+
+static void test_reset_then_single_step() {
+    de::EngineConfig cfg;
+    cfg.start_scene     = de::StartScene::Crowd;
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "reset-step: init ok");
+
+    // Run, pause, reset, then single-step.
+    for (int i = 0; i < 5; ++i)
+        engine.step_one_frame();
+
+    de::DebugAction pause = {};
+    pause.toggle_pause = true;
+    engine.debug_controls_mut().apply(pause);
+
+    de::DebugAction reset = {};
+    reset.reset_scene = true;
+    engine.debug_controls_mut().apply(reset);
+    engine.step_one_frame();  // processes reset while paused
+
+    // Now single-step: must produce exactly 1 tick from tick 0.
+    de::DebugAction step = {};
+    step.single_step = true;
+    engine.debug_controls_mut().apply(step);
+    engine.step_one_frame();
+
+    check(engine.frame_info().sim_tick_index == 1,
+          "reset-step: exactly 1 tick after reset + single-step");
+
+    engine.shutdown();
+}
+
+// =================================================================
 
 int main() {
     test_crowd_headless();
@@ -262,6 +375,9 @@ int main() {
     test_sim_state_after_init();
     test_single_step_exact_tick();
     test_pause_stops_ticking();
+    test_reset_clears_accumulator();
+    test_switch_clears_accumulator();
+    test_reset_then_single_step();
 
     std::printf("\nEngineRuntimeTest: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail;

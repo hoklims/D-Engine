@@ -21,6 +21,9 @@ struct FixedStep {
     // Feed a raw frame delta and compute how many fixed steps to run.
     FixedStepResult consume(double frame_delta);
 
+    // Clear the accumulator so the next frame starts with no residual time.
+    void reset();
+
     double step_dt() const;
     double accumulator() const;
 

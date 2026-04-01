@@ -32,6 +32,7 @@ struct Engine {
     const RenderStats& render_stats() const;
     const DebugControls& debug_controls() const;
     DebugControls& debug_controls_mut();
+    const FixedStep& fixed_step() const;
 
 private:
     EngineConfig config_;
