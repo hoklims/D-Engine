@@ -5,6 +5,7 @@
 #include "Render/RenderFrame.h"
 #include "Render/RenderStats.h"
 #include "Runtime/Clock.h"
+#include "Runtime/DebugControls.h"
 #include "Runtime/EngineConfig.h"
 #include "Runtime/FixedStep.h"
 #include "Runtime/FrameInfo.h"
@@ -29,6 +30,8 @@ struct Engine {
     const RenderFrame& render_frame() const;
     const RenderCamera& render_camera() const;
     const RenderStats& render_stats() const;
+    const DebugControls& debug_controls() const;
+    DebugControls& debug_controls_mut();
 
 private:
     EngineConfig config_;
@@ -46,12 +49,17 @@ private:
     RenderFrame render_frame_;
     RenderCamera camera_;
     RenderStats render_stats_;
+    DebugControls debug_;
 
     void begin_frame();
     void tick_fixed_steps();
     void update_frame(double alpha);
     void render();
     void end_frame();
+
+    void process_debug_input();
+    void apply_debug_actions();
+    void update_window_title();
 
     // Hooks for future systems. Override points for simulation and presentation.
     void update_fixed(double step_dt);

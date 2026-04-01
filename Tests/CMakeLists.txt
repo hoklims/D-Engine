@@ -134,9 +134,17 @@ target_link_libraries(EngineBootTest PRIVATE DEcs)
 target_include_directories(EngineBootTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
 add_test(NAME EngineBootTest COMMAND EngineBootTest)
 
+add_executable(DebugControlsTest
+    DebugControlsTest.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/DebugControls.cpp
+)
+target_include_directories(DebugControlsTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
+add_test(NAME DebugControlsTest COMMAND DebugControlsTest)
+
 add_executable(RenderStatsTest
     RenderStatsTest.cpp
     ${CMAKE_SOURCE_DIR}/Source/Runtime/Engine.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/DebugControls.cpp
     ${CMAKE_SOURCE_DIR}/Source/Runtime/SimState.cpp
     ${CMAKE_SOURCE_DIR}/Source/Runtime/CrowdSystems.cpp
     ${CMAKE_SOURCE_DIR}/Source/Runtime/Clock.cpp
@@ -154,6 +162,7 @@ add_test(NAME RenderStatsTest COMMAND RenderStatsTest)
 add_executable(EngineRuntimeTest
     EngineRuntimeTest.cpp
     ${CMAKE_SOURCE_DIR}/Source/Runtime/Engine.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/DebugControls.cpp
     ${CMAKE_SOURCE_DIR}/Source/Runtime/SimState.cpp
     ${CMAKE_SOURCE_DIR}/Source/Runtime/CrowdSystems.cpp
     ${CMAKE_SOURCE_DIR}/Source/Runtime/Clock.cpp

@@ -1,6 +1,8 @@
 #include "Runtime/Engine.h"
 #include "Render/Renderer.h"
 
+#include <cstdio>
+
 namespace de {
 
 bool Engine::init() {
@@ -17,6 +19,7 @@ bool Engine::init(const EngineConfig& cfg) {
     wip_telemetry_ = {};
     render_frame_ = {};
     render_stats_ = {};
+    debug_ = {};
 
     WindowDesc desc;
     desc.title = "D-Engine 2.0";
@@ -65,9 +68,18 @@ void Engine::step_one_frame() {
         ScopeTimer total_timer(&wip_telemetry_.total_frame_s);
         begin_frame();
         if (!running_) return;
-        tick_fixed_steps();
+        process_debug_input();
+        apply_debug_actions();
+        if (debug_.should_tick()) {
+            tick_fixed_steps();
+        } else {
+            // Still extract render frame for display even when paused.
+            update_presentation(0.0);
+        }
         render();
         end_frame();
+        update_window_title();
+        debug_.consume();
     }
     telemetry_ = wip_telemetry_;
 }
@@ -83,6 +95,7 @@ void Engine::shutdown() {
     sim_.shutdown();
     window_.destroy();
     render_stats_ = {};
+    debug_ = {};
 }
 
 const FrameInfo& Engine::frame_info() const {
@@ -108,6 +121,85 @@ const RenderCamera& Engine::render_camera() const {
 const RenderStats& Engine::render_stats() const {
     return render_stats_;
 }
+
+const DebugControls& Engine::debug_controls() const {
+    return debug_;
+}
+
+DebugControls& Engine::debug_controls_mut() {
+    return debug_;
+}
+
+// -- Debug controls -------------------------------------------------
+
+void Engine::process_debug_input() {
+    DebugAction action = {};
+
+    for (uint32_t i = 0; i < window_.key_count(); ++i) {
+        uint8_t vk = window_.key_at(i);
+        switch (vk) {
+        case 0x20: action.toggle_pause    = true;  break; // VK_SPACE
+        case 'N':  action.single_step     = true;  break;
+        case 'R':  action.reset_scene     = true;  break;
+        case '1':  action.switch_scene    = 0;     break; // Basic
+        case '2':  action.switch_scene    = 1;     break; // Crowd
+        case '3':  action.switch_scene    = 2;     break; // Battlefield
+        case 'F':  action.toggle_auto_frame = true; break;
+        case 0xBB: action.zoom_delta      = 5.0f;  break; // VK_OEM_PLUS
+        case 0xBD: action.zoom_delta      = -5.0f; break; // VK_OEM_MINUS
+        case VK_LEFT:  action.pan_dx      = -3.0f; break;
+        case VK_RIGHT: action.pan_dx      = 3.0f;  break;
+        case VK_UP:    action.pan_dy      = 3.0f;  break;
+        case VK_DOWN:  action.pan_dy      = -3.0f; break;
+        default: break;
+        }
+    }
+    window_.clear_keys();
+
+    debug_.apply(action);
+}
+
+void Engine::apply_debug_actions() {
+    // Scene reset.
+    if (debug_.reset_requested) {
+        sim_.shutdown();
+        switch (config_.start_scene) {
+        case StartScene::Battlefield: sim_.bootstrap_battlefield({}); break;
+        case StartScene::Basic:       sim_.bootstrap();               break;
+        case StartScene::Crowd:
+        default:                      sim_.bootstrap_crowd();         break;
+        }
+        frame_info_ = {};
+    }
+
+    // Scene switch.
+    if (debug_.scene_switch >= 0) {
+        auto scene = static_cast<StartScene>(debug_.scene_switch);
+        config_.start_scene = scene;
+        sim_.shutdown();
+        switch (scene) {
+        case StartScene::Battlefield: sim_.bootstrap_battlefield({}); break;
+        case StartScene::Basic:       sim_.bootstrap();               break;
+        case StartScene::Crowd:
+        default:                      sim_.bootstrap_crowd();         break;
+        }
+        frame_info_ = {};
+    }
+}
+
+void Engine::update_window_title() {
+    char buf[256];
+    std::snprintf(buf, sizeof(buf),
+        "D-Engine 2.0 | %s | %s | tick %llu | agents %u | inst %u",
+        scene_name(config_.start_scene),
+        debug_.paused ? "PAUSED" : "RUNNING",
+        static_cast<unsigned long long>(frame_info_.sim_tick_index),
+        render_stats_.agent_count,
+        render_stats_.instance_count);
+    window_.set_title(buf);
+}
+
+// -----------------------------------------------------------------------
 
 void Engine::begin_frame() {
     ScopeTimer t(&wip_telemetry_.begin_frame_s);
@@ -159,7 +251,19 @@ void Engine::update_presentation(double alpha) {
     float w = static_cast<float>(window_.width());
     float h = static_cast<float>(window_.height());
     float aspect = (h > 0.0f) ? (w / h) : 1.0f;
-    camera_ = auto_frame_crowd(render_frame_, aspect);
+
+    if (debug_.auto_frame) {
+        camera_ = auto_frame_crowd(render_frame_, aspect);
+        // Sync manual camera to auto-frame so toggle is seamless.
+        debug_.manual_center_x = camera_.center_x;
+        debug_.manual_center_y = camera_.center_y;
+        debug_.manual_hw       = camera_.half_width;
+    } else {
+        camera_.center_x  = debug_.manual_center_x;
+        camera_.center_y  = debug_.manual_center_y;
+        camera_.half_width = debug_.manual_hw;
+        camera_.aspect    = aspect;
+    }
 }
 
 void Engine::render() {

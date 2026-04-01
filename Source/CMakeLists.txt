@@ -3,6 +3,8 @@ add_executable(DEngine WIN32
     Runtime/Engine.h
     Runtime/Engine.cpp
     Runtime/EngineConfig.h
+    Runtime/DebugControls.h
+    Runtime/DebugControls.cpp
     Runtime/FrameInfo.h
     Runtime/Clock.h
     Runtime/Clock.cpp

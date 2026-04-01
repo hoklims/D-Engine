@@ -19,6 +19,11 @@ LRESULT CALLBACK Window::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
             self->height_ = static_cast<int32_t>(HIWORD(lparam));
         }
         return 0;
+    case WM_KEYDOWN:
+        if (self && self->key_count_ < k_max_keys) {
+            self->keys_[self->key_count_++] = static_cast<uint8_t>(wparam & 0xFF);
+        }
+        return 0;
     case WM_CLOSE:
         if (self) self->open_ = false;
         return 0;
@@ -104,5 +109,9 @@ bool Window::is_open() const { return open_; }
 HWND Window::handle() const { return hwnd_; }
 int32_t Window::width() const { return width_; }
 int32_t Window::height() const { return height_; }
+
+void Window::set_title(const char* title) {
+    if (hwnd_) SetWindowTextA(hwnd_, title);
+}
 
 } // namespace de
