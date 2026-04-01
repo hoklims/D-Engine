@@ -24,7 +24,7 @@ static void test_benchmark_determinism() {
     auto r1 = de::run_benchmark(de::k_demo_presets[0], 120);
     auto r2 = de::run_benchmark(de::k_demo_presets[0], 120);
 
-    check(de::compare_runs(r1, r2),
+    check(de::compare_structural(r1, r2),
           "determinism: two runs of LaneClash produce identical results");
     check(r1.final_hash != 0,
           "determinism: hash is non-zero");
@@ -72,7 +72,7 @@ static void test_stress_determinism() {
     for (int i = 4; i < 7; ++i) {
         auto r1 = de::run_benchmark(de::k_demo_presets[i], 60);
         auto r2 = de::run_benchmark(de::k_demo_presets[i], 60);
-        check(de::compare_runs(r1, r2),
+        check(de::compare_structural(r1, r2),
               "stress_determinism: identical runs match");
     }
 }
@@ -92,9 +92,9 @@ static void test_budget_observable() {
     auto r = de::run_benchmark(de::k_demo_presets[4], 10,
                                1.0 / 60.0, &tight);
 
-    check(r.total_violations > 0,
+    check(r.ticks_over_budget > 0,
           "budget_observable: violations detected under tight budget");
-    check(r.total_violations == r.ticks_run,
+    check(r.ticks_over_budget == r.ticks_run,
           "budget_observable: every tick violated (impossible budget)");
 }
 
@@ -126,15 +126,76 @@ static void test_budget_response_observable() {
 }
 
 // =================================================================
-//  compare_runs detects mismatches
+//  compare_structural detects mismatches
 // =================================================================
 
 static void test_compare_detects_mismatch() {
     auto r1 = de::run_benchmark(de::k_demo_presets[0], 60);
     auto r2 = de::run_benchmark(de::k_demo_presets[1], 60);
 
-    check(!de::compare_runs(r1, r2),
+    check(!de::compare_structural(r1, r2),
           "compare: different presets produce different results");
+}
+
+// =================================================================
+//  Structural comparison ignores budget/wall-clock signals
+// =================================================================
+// Two runs of the same preset with different budget configs must
+// still compare as structurally equal.  The budget fields should
+// differ, but compare_structural must not care.
+
+static void test_structural_ignores_budget() {
+    // Run 1: default budget (very generous, 0 violations expected).
+    auto r1 = de::run_benchmark(de::k_demo_presets[0], 60);
+
+    // Run 2: impossible budget (every tick violates).
+    de::SimBudgetConfig tight;
+    tight.max_tick_s            = 0.0;
+    tight.max_system_s          = 0.0;
+    tight.max_targeting_scanned = 0;
+    tight.max_melee_checks      = 0;
+    tight.max_lod_t0_count      = 0;
+    auto r2 = de::run_benchmark(de::k_demo_presets[0], 60,
+                                1.0 / 60.0, &tight);
+
+    // Budget fields differ.
+    check(r1.ticks_over_budget != r2.ticks_over_budget,
+          "structural_ignores_budget: budget fields actually differ");
+
+    // Structural comparison still passes (same sim, same hash).
+    check(de::compare_structural(r1, r2),
+          "structural_ignores_budget: compare_structural is stable");
+
+    // Budget comparison detects the difference.
+    check(!de::compare_budget(r1, r2),
+          "structural_ignores_budget: compare_budget detects diff");
+}
+
+// =================================================================
+//  compare_budget works for identical runs
+// =================================================================
+
+static void test_compare_budget_identical() {
+    de::SimBudgetConfig tight;
+    tight.max_tick_s            = 0.0;
+    tight.max_system_s          = 0.0;
+    tight.max_targeting_scanned = 0;
+    tight.max_melee_checks      = 0;
+    tight.max_lod_t0_count      = 0;
+
+    auto r1 = de::run_benchmark(de::k_demo_presets[0], 30,
+                                1.0 / 60.0, &tight);
+    auto r2 = de::run_benchmark(de::k_demo_presets[0], 30,
+                                1.0 / 60.0, &tight);
+
+    // With deterministic-only budget contracts (targeting, melee, lod),
+    // the count-based violations are identical across runs.
+    // Wall-clock contracts (max_tick_s=0) always fire, so both runs
+    // see the same violation count.
+    check(r1.ticks_over_budget == r2.ticks_over_budget,
+          "compare_budget_identical: same violation count");
+    check(de::compare_budget(r1, r2),
+          "compare_budget_identical: budget signals match");
 }
 
 // =================================================================
@@ -164,6 +225,8 @@ int main() {
     test_budget_observable();
     test_budget_response_observable();
     test_compare_detects_mismatch();
+    test_structural_ignores_budget();
+    test_compare_budget_identical();
     test_result_fields();
 
     std::printf("\nBenchmarkTest: %d passed, %d failed\n", g_pass, g_fail);

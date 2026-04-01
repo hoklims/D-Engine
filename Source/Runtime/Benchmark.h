@@ -6,8 +6,11 @@
 //   BenchmarkResult r = run_benchmark(k_demo_presets[4], 600);
 //   // r contains hash, timing, budget, agent stats.
 //
-//   bool same = compare_runs(r1, r2);
-//   // true if hashes and structural stats match (determinism check).
+// Comparison helpers:
+//   compare_structural(a, b)  -- deterministic signals only (hash,
+//       ticks, peak agent/LOD counts).  Stable across machines.
+//   compare_budget(a, b)      -- budget signals (ticks_over_budget,
+//       pressure).  May vary with wall-clock timing / machine load.
 
 #include "Runtime/DemoPresets.h"
 #include "Runtime/SimState.h"
@@ -23,17 +26,21 @@ struct BenchmarkResult {
     uint32_t ticks_run          = 0;
     uint64_t final_hash         = 0;
 
+    // -- Deterministic signals (same input -> same output) ------------------
+    // Agent metrics (peak over all ticks).
+    uint32_t peak_agent_count   = 0;
+    uint32_t peak_lod_t0_count  = 0;
+
+    // -- Wall-clock dependent signals (may vary across machines) ------------
     // Timing (wall-clock, seconds).
     double   total_wall_s       = 0.0;
     double   avg_tick_s         = 0.0;
     double   max_tick_s         = 0.0;
 
-    // Agent metrics (peak over all ticks).
-    uint32_t peak_agent_count   = 0;
-    uint32_t peak_lod_t0_count  = 0;
-
-    // Budget (accumulated over all ticks).
-    uint32_t total_violations   = 0;
+    // Budget: number of ticks where at least one budget contract was
+    // violated.  Depends on wall-clock timing (max_tick_s, max_system_s
+    // contracts compare against real CPU cost).
+    uint32_t ticks_over_budget  = 0;
     uint8_t  max_pressure_applied = 0;
     uint8_t  max_pressure_pending = 0;
 };
@@ -75,7 +82,7 @@ inline BenchmarkResult run_benchmark(
             r.peak_lod_t0_count = snap.lod_tier_counts[0];
 
         if (!snap.budget.within_budget)
-            ++r.total_violations;
+            ++r.ticks_over_budget;
         if (snap.budget_response_applied_pressure > r.max_pressure_applied)
             r.max_pressure_applied = snap.budget_response_applied_pressure;
         if (snap.budget_response_pending_pressure > r.max_pressure_pending)
@@ -91,15 +98,29 @@ inline BenchmarkResult run_benchmark(
     return r;
 }
 
-// Compare two benchmark runs for structural equality.
-// Returns true if hashes, tick counts, and peak agent counts match.
-// Timing is intentionally excluded (non-deterministic).
-inline bool compare_runs(const BenchmarkResult& a, const BenchmarkResult& b) {
+// Compare deterministic signals only.
+// Returns true if ticks, hash, and peak agent/LOD counts match.
+// Excludes wall-clock timing AND budget violation counts (which
+// depend on wall-clock contracts max_tick_s / max_system_s).
+// Safe to use across machines and under varying load.
+inline bool compare_structural(const BenchmarkResult& a,
+                               const BenchmarkResult& b) {
     if (a.ticks_run != b.ticks_run) return false;
     if (a.final_hash != b.final_hash) return false;
     if (a.peak_agent_count != b.peak_agent_count) return false;
     if (a.peak_lod_t0_count != b.peak_lod_t0_count) return false;
-    if (a.total_violations != b.total_violations) return false;
+    return true;
+}
+
+// Compare budget signals (wall-clock dependent).
+// Returns true if ticks_over_budget and pressure peaks match.
+// Only meaningful when comparing runs on the same machine under
+// similar load conditions.
+inline bool compare_budget(const BenchmarkResult& a,
+                           const BenchmarkResult& b) {
+    if (a.ticks_over_budget != b.ticks_over_budget) return false;
+    if (a.max_pressure_applied != b.max_pressure_applied) return false;
+    if (a.max_pressure_pending != b.max_pressure_pending) return false;
     return true;
 }
 
