@@ -20,7 +20,7 @@ struct CrowdRenderItem {
     float    health_pct = 1.0f;   // 0.0 - 1.0
     float    dir_x      = 0.0f;   // normalized facing direction
     float    dir_y      = 1.0f;   // (0,1) = default up
-    bool     has_target = false;  // true if agent has a valid pursuit target
+    bool     has_target = false;  // alive enemy target (not self, different team)
 };
 
 static constexpr uint32_t k_max_render_agents = 4096;

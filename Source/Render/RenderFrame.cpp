@@ -15,7 +15,7 @@ uint32_t extract_render_frame(World& world, uint64_t tick, uint64_t frame_id, Re
     uint32_t idx = 0;
     world.each<CrowdAgent, Position, Velocity, DesiredDirection, Target,
                Team, Health, BehaviorLod>(
-        [&](EntityId, CrowdAgent&, Position& pos, Velocity& vel,
+        [&](EntityId self, CrowdAgent&, Position& pos, Velocity& vel,
             DesiredDirection& dd, Target& tgt, Team& team,
             Health& hp, BehaviorLod& lod) {
             if (idx < k_max_render_agents) {
@@ -25,7 +25,16 @@ uint32_t extract_render_frame(World& world, uint64_t tick, uint64_t frame_id, Re
                 item.team_id    = team.id;
                 item.lod_tier   = lod.tier;
                 item.health_pct = (hp.max > 0.0f) ? (hp.current / hp.max) : 0.0f;
-                item.has_target = tgt.has_target && world.alive(tgt.entity);
+
+                // Valid pursuit target: flag set, entity alive, not self,
+                // and belongs to a different team.
+                bool valid = false;
+                if (tgt.has_target && tgt.entity != self
+                    && world.alive(tgt.entity)) {
+                    const Team* tt = world.get<Team>(tgt.entity);
+                    valid = tt && tt->id != team.id;
+                }
+                item.has_target = valid;
 
                 // Direction: velocity > desired direction > (0,1).
                 float vlen2 = vel.dx * vel.dx + vel.dy * vel.dy;

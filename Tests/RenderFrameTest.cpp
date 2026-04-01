@@ -349,17 +349,21 @@ static void test_target_independent_of_velocity() {
     cfg.team_spacing    = 200.0f;
     sim.bootstrap_crowd(cfg);
 
-    // Set Target to a valid alive entity (self) with zero velocity.
-    uint32_t found = 0;
-    sim.world.each<de::CrowdAgent, de::Velocity, de::Target>(
-        [&](de::EntityId eid, de::CrowdAgent&, de::Velocity& v, de::Target& t) {
-            if (found == 0) {
-                v.dx = 0.0f;  v.dy = 0.0f;
-                t.has_target = true;
-                t.entity     = eid;   // self-reference, alive
-            }
-            ++found;
+    // Find one agent per team.
+    de::EntityId t0 = {}, t1 = {};
+    bool f0 = false, f1 = false;
+    sim.world.each<de::CrowdAgent, de::Team>(
+        [&](de::EntityId eid, de::CrowdAgent&, de::Team& tm) {
+            if (tm.id == 0 && !f0) { t0 = eid; f0 = true; }
+            if (tm.id == 1 && !f1) { t1 = eid; f1 = true; }
         });
+
+    // Point team-0 agent at enemy team-1 agent, with zero velocity.
+    auto* vel = sim.world.get<de::Velocity>(t0);
+    vel->dx = 0.0f;  vel->dy = 0.0f;
+    auto* tgt = sim.world.get<de::Target>(t0);
+    tgt->has_target = true;
+    tgt->entity     = t1;
 
     de::RenderFrame frame;
     de::extract_render_frame(sim.world, 0, 0, frame);
@@ -445,6 +449,70 @@ static void test_has_target_invalid_entity() {
 }
 
 // =================================================================
+//  has_target false when targeting self
+// =================================================================
+
+static void test_has_target_self() {
+    de::SimState sim;
+    de::CrowdConfig cfg;
+    cfg.agents_per_team = 1;
+    cfg.team_spacing    = 200.0f;
+    sim.bootstrap_crowd(cfg);
+
+    sim.world.each<de::CrowdAgent, de::Target>(
+        [&](de::EntityId eid, de::CrowdAgent&, de::Target& t) {
+            t.has_target = true;
+            t.entity     = eid;   // self
+        });
+
+    de::RenderFrame frame;
+    de::extract_render_frame(sim.world, 0, 0, frame);
+
+    bool any = false;
+    for (uint32_t i = 0; i < frame.extracted_count; ++i)
+        if (frame.agents[i].has_target) { any = true; break; }
+    check(!any, "self-tgt: has_target false when targeting self");
+}
+
+// =================================================================
+//  has_target false when targeting alive ally (same team)
+// =================================================================
+
+static void test_has_target_ally() {
+    de::SimState sim;
+    de::CrowdConfig cfg;
+    cfg.agents_per_team = 2;
+    cfg.team_spacing    = 200.0f;
+    sim.bootstrap_crowd(cfg);
+
+    // Find two agents on the same team.
+    de::EntityId a1 = {}, a2 = {};
+    bool f1 = false, f2 = false;
+    sim.world.each<de::CrowdAgent, de::Team>(
+        [&](de::EntityId eid, de::CrowdAgent&, de::Team& tm) {
+            if (tm.id == 0) {
+                if (!f1)      { a1 = eid; f1 = true; }
+                else if (!f2) { a2 = eid; f2 = true; }
+            }
+        });
+
+    // a1 targets a2 (same team).
+    auto* tgt     = sim.world.get<de::Target>(a1);
+    tgt->has_target = true;
+    tgt->entity     = a2;
+
+    de::RenderFrame frame;
+    de::extract_render_frame(sim.world, 0, 0, frame);
+
+    // Find the item corresponding to a1 and check has_target.
+    // Since a2 is on the same team, has_target must be false.
+    bool ally_targeted = false;
+    for (uint32_t i = 0; i < frame.extracted_count; ++i)
+        if (frame.agents[i].has_target) { ally_targeted = true; break; }
+    check(!ally_targeted, "ally-tgt: has_target false for same-team target");
+}
+
+// =================================================================
 
 int main() {
     test_extract_basic();
@@ -463,6 +531,8 @@ int main() {
     test_target_independent_of_velocity();
     test_has_target_dead_entity();
     test_has_target_invalid_entity();
+    test_has_target_self();
+    test_has_target_ally();
 
     std::printf("\nRenderFrameTest: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail;
