@@ -33,6 +33,8 @@ add_executable(DEngine WIN32
     Render/Renderer.cpp
     Render/WorldDebugPass.h
     Render/WorldDebugPass.cpp
+    Render/ViewCulling.h
+    Render/ViewCulling.cpp
     Render/BitmapFont.h
     Render/DebugOverlay.h
     Render/DebugOverlay.cpp

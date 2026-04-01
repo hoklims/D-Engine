@@ -152,6 +152,7 @@ add_executable(RenderStatsTest
     ${CMAKE_SOURCE_DIR}/Source/Runtime/ScopeTimer.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/RenderFrame.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/RenderCamera.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/ViewCulling.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/Renderer.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/WorldDebugPass.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/DebugOverlay.cpp
@@ -186,6 +187,7 @@ add_executable(DemoPresetTest
     ${CMAKE_SOURCE_DIR}/Source/Runtime/ScopeTimer.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/RenderFrame.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/RenderCamera.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/ViewCulling.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/Renderer.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/WorldDebugPass.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/DebugOverlay.cpp
@@ -194,6 +196,14 @@ add_executable(DemoPresetTest
 target_link_libraries(DemoPresetTest PRIVATE DEcs d3d12 dxgi d3dcompiler)
 target_include_directories(DemoPresetTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
 add_test(NAME DemoPresetTest COMMAND DemoPresetTest)
+
+add_executable(CullingTest
+    CullingTest.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/ViewCulling.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/RenderCamera.cpp
+)
+target_include_directories(CullingTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
+add_test(NAME CullingTest COMMAND CullingTest)
 
 add_executable(AvoidanceTest
     AvoidanceTest.cpp
@@ -224,6 +234,7 @@ add_executable(EngineRuntimeTest
     ${CMAKE_SOURCE_DIR}/Source/Runtime/ScopeTimer.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/RenderFrame.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/RenderCamera.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/ViewCulling.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/Renderer.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/WorldDebugPass.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/DebugOverlay.cpp

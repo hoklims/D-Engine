@@ -5,6 +5,7 @@
 #include "Render/RenderCamera.h"
 #include "Render/RenderFrame.h"
 #include "Render/RenderStats.h"
+#include "Render/ViewCulling.h"
 #include "Render/WorldDebugPass.h"
 #include "Runtime/Clock.h"
 #include "Runtime/DebugControls.h"
@@ -62,6 +63,7 @@ private:
     OverlayInstance overlay_instances_[k_max_overlay_instances] = {};
     uint32_t overlay_count_ = 0;
     DebugControls debug_;
+    uint32_t pre_cull_extracted_ = 0;
     int8_t current_preset_ = -1;
 
     void begin_frame();

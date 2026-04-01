@@ -25,6 +25,7 @@ bool Engine::init(const EngineConfig& cfg) {
     overlay_data_ = {};
     overlay_count_ = 0;
     debug_ = {};
+    pre_cull_extracted_ = 0;
     current_preset_ = -1;
     world_debug_config_ = {};
 
@@ -118,6 +119,7 @@ void Engine::shutdown() {
     overlay_data_ = {};
     overlay_count_ = 0;
     debug_ = {};
+    pre_cull_extracted_ = 0;
     current_preset_ = -1;
     world_debug_config_ = {};
 }
@@ -266,12 +268,13 @@ void Engine::apply_debug_actions() {
 void Engine::update_window_title() {
     char buf[256];
     std::snprintf(buf, sizeof(buf),
-        "D-Engine 2.0 | %s | %s | tick %llu | agents %u | inst %u",
+        "D-Engine 2.0 | %s | %s | tick %llu | agents %u | vis %u | cull %u",
         current_scene_label(),
         debug_.paused ? "PAUSED" : "RUNNING",
         static_cast<unsigned long long>(frame_info_.sim_tick_index),
         render_stats_.agent_count,
-        render_stats_.instance_count);
+        render_stats_.visible_count,
+        render_stats_.culled_count);
     window_.set_title(buf);
 }
 
@@ -361,6 +364,13 @@ void Engine::update_presentation(double alpha) {
         camera_.half_width = debug_.manual_hw;
         camera_.aspect    = aspect;
     }
+
+    // View culling: compact visible agents to front of array.
+    // Save pre-cull count for stats, then reduce extracted_count
+    // so the renderer only processes visible agents.
+    pre_cull_extracted_ = render_frame_.extracted_count;
+    uint32_t visible = cull_render_frame(render_frame_, camera_);
+    render_frame_.extracted_count = visible;
 }
 
 void Engine::render() {
@@ -385,12 +395,16 @@ void Engine::render() {
         static_cast<float>(window_.height()),
         overlay_instances_, k_max_overlay_instances);
 
+    uint32_t visible = render_frame_.extracted_count;
+
     if (renderer_active_) {
         if (!renderer_->resize(window_.width(), window_.height())) {
             renderer_active_ = false;
             render_stats_ = {};
             render_stats_.agent_count     = render_frame_.agent_count;
-            render_stats_.extracted_count = render_frame_.extracted_count;
+            render_stats_.extracted_count = pre_cull_extracted_;
+            render_stats_.visible_count   = visible;
+            render_stats_.culled_count    = pre_cull_extracted_ - visible;
             render_stats_.dropped_count   = render_frame_.agent_count;
             render_stats_.frame_skipped   = true;
             return;
@@ -402,9 +416,14 @@ void Engine::render() {
         // Headless: populate stats from RenderFrame for telemetry consistency.
         render_stats_ = {};
         render_stats_.agent_count     = render_frame_.agent_count;
-        render_stats_.extracted_count = render_frame_.extracted_count;
+        render_stats_.instance_count  = 0;
         render_stats_.dropped_count   = render_frame_.agent_count;
     }
+
+    // Fix up culling stats (renderer only knows post-cull extracted_count).
+    render_stats_.extracted_count = pre_cull_extracted_;
+    render_stats_.visible_count   = visible;
+    render_stats_.culled_count    = pre_cull_extracted_ - visible;
 }
 
 void Engine::end_frame() {
