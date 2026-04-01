@@ -113,7 +113,7 @@ int main() {
 
     {
         de::DebugOverlayData d;
-        de::extract_debug_overlay("Crowd", false, 0, 0, 0, 0,
+        de::extract_debug_overlay("Crowd", false, 0, 0, 0, 0, 0,
                                   false, true, d);
         bool found = false;
         for (int i = 0; i < d.line_count; ++i)
