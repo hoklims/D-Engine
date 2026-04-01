@@ -249,6 +249,70 @@ static void test_full_sequence() {
 }
 
 // =================================================================
+//  Repeat resistance: multiple toggle_pause in one action = 1 toggle
+// =================================================================
+
+static void test_repeat_toggle_pause() {
+    de::DebugControls dc;
+    check(!dc.paused, "repeat-pause: starts unpaused");
+
+    // Simulate what happens with a single DebugAction (one frame).
+    // Even if toggle_pause is set, it's a single bool -- only one toggle.
+    de::DebugAction a = {};
+    a.toggle_pause = true;
+    dc.apply(a);
+    check(dc.paused, "repeat-pause: paused after 1 apply");
+
+    // A second apply (as if a second frame also got the key) toggles again.
+    dc.apply(a);
+    check(!dc.paused, "repeat-pause: resumed after 2nd apply");
+
+    // But within a single frame, toggle_pause is a bool -- can only be set once.
+    // This is the contract: Window gives at most 1 pressed event per key per frame.
+}
+
+// =================================================================
+//  Repeat resistance: multiple reset in one frame = 1 reset
+// =================================================================
+
+static void test_repeat_reset() {
+    de::DebugControls dc;
+
+    de::DebugAction a = {};
+    a.reset_scene = true;
+    dc.apply(a);
+    check(dc.reset_requested, "repeat-reset: requested");
+
+    // Apply again (simulating auto-repeat reaching pressed buffer).
+    // reset_requested is already true, stays true -- still only 1 reset.
+    dc.apply(a);
+    check(dc.reset_requested, "repeat-reset: still requested (idempotent)");
+
+    dc.consume();
+    check(!dc.reset_requested, "repeat-reset: consumed");
+}
+
+// =================================================================
+//  Repeat resistance: multiple scene switch = last wins
+// =================================================================
+
+static void test_repeat_scene_switch() {
+    de::DebugControls dc;
+
+    de::DebugAction a1 = {};
+    a1.switch_scene = 0;
+    dc.apply(a1);
+    check(dc.scene_switch == 0, "repeat-switch: first = 0");
+
+    de::DebugAction a2 = {};
+    a2.switch_scene = 2;
+    dc.apply(a2);
+    check(dc.scene_switch == 2, "repeat-switch: second = 2 (last wins)");
+
+    dc.consume();
+}
+
+// =================================================================
 
 int main() {
     test_default_state();
@@ -264,6 +328,9 @@ int main() {
     test_consume_idempotent();
     test_scene_name();
     test_full_sequence();
+    test_repeat_toggle_pause();
+    test_repeat_reset();
+    test_repeat_scene_switch();
 
     std::printf("\nDebugControlsTest: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail;

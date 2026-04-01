@@ -172,6 +172,85 @@ static void test_sim_state_after_init() {
 }
 
 // =================================================================
+//  Single-step: exactly 1 tick per N press
+// =================================================================
+
+static void test_single_step_exact_tick() {
+    de::EngineConfig cfg;
+    cfg.start_scene     = de::StartScene::Crowd;
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "single-step: init ok");
+
+    // Run several frames to let clock accumulate real deltas.
+    for (int i = 0; i < 5; ++i)
+        engine.step_one_frame();
+    uint64_t tick_before_pause = engine.frame_info().sim_tick_index;
+
+    // Pause.
+    de::DebugAction pause = {};
+    pause.toggle_pause = true;
+    engine.debug_controls_mut().apply(pause);
+    check(engine.debug_controls().paused, "single-step: paused");
+
+    // Step once -- should advance exactly 1 tick.
+    de::DebugAction step = {};
+    step.single_step = true;
+    engine.debug_controls_mut().apply(step);
+    engine.step_one_frame();
+    uint64_t tick_after_step1 = engine.frame_info().sim_tick_index;
+    check(tick_after_step1 == tick_before_pause + 1,
+          "single-step: exactly +1 tick after 1st N");
+
+    // Step again -- another +1.
+    engine.debug_controls_mut().apply(step);
+    engine.step_one_frame();
+    uint64_t tick_after_step2 = engine.frame_info().sim_tick_index;
+    check(tick_after_step2 == tick_before_pause + 2,
+          "single-step: exactly +2 ticks after 2nd N");
+
+    // No step request -- tick should NOT advance.
+    engine.step_one_frame();
+    uint64_t tick_no_step = engine.frame_info().sim_tick_index;
+    check(tick_no_step == tick_after_step2,
+          "single-step: no advance without N");
+
+    engine.shutdown();
+}
+
+// =================================================================
+//  Pause prevents ticking
+// =================================================================
+
+static void test_pause_stops_ticking() {
+    de::EngineConfig cfg;
+    cfg.start_scene     = de::StartScene::Crowd;
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "pause-stop: init ok");
+
+    engine.step_one_frame();
+    uint64_t tick0 = engine.frame_info().sim_tick_index;
+
+    // Pause.
+    de::DebugAction pause = {};
+    pause.toggle_pause = true;
+    engine.debug_controls_mut().apply(pause);
+
+    // Several frames while paused.
+    for (int i = 0; i < 5; ++i)
+        engine.step_one_frame();
+
+    uint64_t tick_after_pause = engine.frame_info().sim_tick_index;
+    check(tick_after_pause == tick0,
+          "pause-stop: tick unchanged after 5 paused frames");
+
+    engine.shutdown();
+}
+
+// =================================================================
 
 int main() {
     test_crowd_headless();
@@ -181,6 +260,8 @@ int main() {
     test_renderer_disabled();
     test_double_shutdown();
     test_sim_state_after_init();
+    test_single_step_exact_tick();
+    test_pause_stops_ticking();
 
     std::printf("\nEngineRuntimeTest: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail;

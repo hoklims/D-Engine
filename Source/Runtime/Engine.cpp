@@ -70,7 +70,10 @@ void Engine::step_one_frame() {
         if (!running_) return;
         process_debug_input();
         apply_debug_actions();
-        if (debug_.should_tick()) {
+        if (debug_.step_requested) {
+            // Single-step: exactly 1 sim tick, bypass fixed-step accumulator.
+            tick_single_step();
+        } else if (debug_.should_tick()) {
             tick_fixed_steps();
         } else {
             // Still extract render frame for display even when paused.
@@ -135,27 +138,36 @@ DebugControls& Engine::debug_controls_mut() {
 void Engine::process_debug_input() {
     DebugAction action = {};
 
-    for (uint32_t i = 0; i < window_.key_count(); ++i) {
-        uint8_t vk = window_.key_at(i);
+    // One-shot actions: initial key press only (no auto-repeat).
+    for (uint32_t i = 0; i < window_.pressed_count(); ++i) {
+        uint8_t vk = window_.pressed_at(i);
         switch (vk) {
-        case 0x20: action.toggle_pause    = true;  break; // VK_SPACE
-        case 'N':  action.single_step     = true;  break;
-        case 'R':  action.reset_scene     = true;  break;
-        case '1':  action.switch_scene    = 0;     break; // Basic
-        case '2':  action.switch_scene    = 1;     break; // Crowd
-        case '3':  action.switch_scene    = 2;     break; // Battlefield
-        case 'F':  action.toggle_auto_frame = true; break;
-        case 0xBB: action.zoom_delta      = 5.0f;  break; // VK_OEM_PLUS
-        case 0xBD: action.zoom_delta      = -5.0f; break; // VK_OEM_MINUS
-        case VK_LEFT:  action.pan_dx      = -3.0f; break;
-        case VK_RIGHT: action.pan_dx      = 3.0f;  break;
-        case VK_UP:    action.pan_dy      = 3.0f;  break;
-        case VK_DOWN:  action.pan_dy      = -3.0f; break;
+        case 0x20: action.toggle_pause      = true; break; // VK_SPACE
+        case 'N':  action.single_step       = true; break;
+        case 'R':  action.reset_scene       = true; break;
+        case '1':  action.switch_scene      = 0;    break; // Basic
+        case '2':  action.switch_scene      = 1;    break; // Crowd
+        case '3':  action.switch_scene      = 2;    break; // Battlefield
+        case 'F':  action.toggle_auto_frame = true;  break;
         default: break;
         }
     }
-    window_.clear_keys();
 
+    // Continuous actions: include auto-repeat (held keys).
+    for (uint32_t i = 0; i < window_.repeat_count(); ++i) {
+        uint8_t vk = window_.repeat_at(i);
+        switch (vk) {
+        case 0xBB: action.zoom_delta += 5.0f;  break; // VK_OEM_PLUS
+        case 0xBD: action.zoom_delta -= 5.0f;  break; // VK_OEM_MINUS
+        case VK_LEFT:  action.pan_dx -= 3.0f;  break;
+        case VK_RIGHT: action.pan_dx += 3.0f;  break;
+        case VK_UP:    action.pan_dy += 3.0f;  break;
+        case VK_DOWN:  action.pan_dy -= 3.0f;  break;
+        default: break;
+        }
+    }
+
+    window_.clear_keys();
     debug_.apply(action);
 }
 
@@ -232,6 +244,27 @@ void Engine::tick_fixed_steps() {
     {
         ScopeTimer st(&wip_telemetry_.presentation_update_s);
         update_frame(result.alpha);
+    }
+}
+
+void Engine::tick_single_step() {
+    ++frame_info_.frame_index;
+    frame_info_.raw_frame_delta = 0.0;
+    frame_info_.clamped_frame_delta = 0.0;
+    frame_info_.steps_this_frame = 1;
+    frame_info_.step_cap_hit = false;
+    frame_info_.presentation_alpha = 0.0;
+
+    ++frame_info_.sim_tick_index;
+    {
+        ScopeTimer st(&wip_telemetry_.fixed_update_s, true);
+        update_fixed(fixed_step_.step_dt());
+    }
+    ++wip_telemetry_.fixed_step_count;
+
+    {
+        ScopeTimer st(&wip_telemetry_.presentation_update_s);
+        update_frame(0.0);
     }
 }
 

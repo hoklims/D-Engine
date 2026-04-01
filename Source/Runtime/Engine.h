@@ -53,6 +53,7 @@ private:
 
     void begin_frame();
     void tick_fixed_steps();
+    void tick_single_step();
     void update_frame(double alpha);
     void render();
     void end_frame();

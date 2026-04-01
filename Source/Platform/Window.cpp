@@ -19,11 +19,18 @@ LRESULT CALLBACK Window::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
             self->height_ = static_cast<int32_t>(HIWORD(lparam));
         }
         return 0;
-    case WM_KEYDOWN:
-        if (self && self->key_count_ < k_max_keys) {
-            self->keys_[self->key_count_++] = static_cast<uint8_t>(wparam & 0xFF);
-        }
+    case WM_KEYDOWN: {
+        if (!self) return 0;
+        uint8_t vk = static_cast<uint8_t>(wparam & 0xFF);
+        bool was_down = (lparam & (1 << 30)) != 0;
+        // Always record in repeat buffer (continuous controls).
+        if (self->repeat_count_ < k_max_keys)
+            self->repeat_[self->repeat_count_++] = vk;
+        // Only record initial press in pressed buffer (one-shot toggles).
+        if (!was_down && self->pressed_count_ < k_max_keys)
+            self->pressed_[self->pressed_count_++] = vk;
         return 0;
+    }
     case WM_CLOSE:
         if (self) self->open_ = false;
         return 0;
