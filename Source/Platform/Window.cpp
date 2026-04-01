@@ -35,7 +35,11 @@ LRESULT CALLBACK Window::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
         if (self) self->open_ = false;
         return 0;
     case WM_DESTROY:
-        PostQuitMessage(0);
+        // No PostQuitMessage: engine loop uses open_/running_ flags,
+        // not the traditional GetMessage quit path.  PostQuitMessage
+        // sets a thread-level quit flag that survives destroy() drains
+        // when other messages are still pending, poisoning the next
+        // window created on the same thread.
         return 0;
     default:
         return DefWindowProcA(hwnd, msg, wparam, lparam);
@@ -43,6 +47,12 @@ LRESULT CALLBACK Window::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
 }
 
 bool Window::create(const WindowDesc& desc) {
+    // Drain any stale messages left by a previous window lifecycle on
+    // this thread (defense-in-depth against leaked quit flags or
+    // orphaned posted messages).
+    MSG stale;
+    while (PeekMessageA(&stale, nullptr, 0, 0, PM_REMOVE)) {}
+
     HINSTANCE hinstance = GetModuleHandleA(nullptr);
 
     WNDCLASSEXA wc = {};
@@ -91,10 +101,12 @@ void Window::destroy() {
         DestroyWindow(hwnd_);
         hwnd_ = nullptr;
         UnregisterClassA(kWindowClassName, GetModuleHandleA(nullptr));
-        // Drain any WM_QUIT posted by WM_DESTROY so it does not
-        // poison future windows created in the same thread.
+        // Drain ALL pending messages (not just WM_QUIT).  The old
+        // WM_QUIT-only drain could miss the quit flag when other
+        // messages were still queued, because PeekMessage only
+        // synthesises WM_QUIT once the queue is otherwise empty.
         MSG msg;
-        while (PeekMessageA(&msg, nullptr, WM_QUIT, WM_QUIT, PM_REMOVE)) {}
+        while (PeekMessageA(&msg, nullptr, 0, 0, PM_REMOVE)) {}
     }
     open_ = false;
 }
