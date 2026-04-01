@@ -1,6 +1,7 @@
 #include "Runtime/Engine.h"
 
 #include <cstdio>
+#include <cstring>
 
 static int g_pass = 0;
 static int g_fail = 0;
@@ -364,6 +365,122 @@ static void test_reset_then_single_step() {
 }
 
 // =================================================================
+//  render_frame() is pristine pre-cull even after manual zoom/pan
+// =================================================================
+
+static void test_render_frame_pre_cull_after_zoom() {
+    de::EngineConfig cfg;
+    cfg.start_scene     = de::StartScene::Crowd;
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "pre-cull: init ok");
+
+    // Run a frame in auto-frame mode to populate agents.
+    engine.step_one_frame();
+    const auto& rf0 = engine.render_frame();
+    uint32_t agent_count = rf0.agent_count;
+    uint32_t extracted0  = rf0.extracted_count;
+    check(extracted0 > 0,             "pre-cull: agents present");
+    check(extracted0 == agent_count,  "pre-cull: all extracted initially");
+
+    // Switch to manual camera far from the crowd -> forces culling.
+    de::DebugAction af = {};
+    af.toggle_auto_frame = true;
+    engine.debug_controls_mut().apply(af);
+    auto& dc = engine.debug_controls_mut();
+    dc.manual_center_x = 9999.0f;
+    dc.manual_center_y = 9999.0f;
+    dc.manual_hw       = 1.0f;
+
+    engine.step_one_frame();
+
+    // render_frame() must still be the full pre-cull extraction.
+    const auto& rf1 = engine.render_frame();
+    check(rf1.extracted_count == agent_count,
+          "pre-cull: extracted_count unchanged after zoom");
+    check(rf1.agent_count == agent_count,
+          "pre-cull: agent_count unchanged after zoom");
+
+    // But render_stats() must show culling.
+    const auto& st = engine.render_stats();
+    check(st.extracted_count == agent_count,
+          "pre-cull: stats.extracted matches frame");
+    check(st.visible_count == 0,
+          "pre-cull: all agents culled when camera is far");
+    check(st.culled_count == agent_count,
+          "pre-cull: culled_count == agent_count");
+
+    engine.shutdown();
+}
+
+// =================================================================
+//  RenderStats culling invariant: visible + culled == extracted
+// =================================================================
+
+static void test_culling_stats_invariant() {
+    de::EngineConfig cfg;
+    cfg.start_scene     = de::StartScene::Crowd;
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "cull-inv: init ok");
+
+    // Auto-frame: all visible, 0 culled.
+    engine.step_one_frame();
+    const auto& st0 = engine.render_stats();
+    check(st0.visible_count + st0.culled_count == st0.extracted_count,
+          "cull-inv: vis+cull==extracted (auto-frame)");
+    check(st0.culled_count == 0,
+          "cull-inv: 0 culled in auto-frame");
+
+    // Manual camera far away: 0 visible, all culled.
+    de::DebugAction af = {};
+    af.toggle_auto_frame = true;
+    engine.debug_controls_mut().apply(af);
+    engine.debug_controls_mut().manual_center_x = 9999.0f;
+    engine.debug_controls_mut().manual_center_y = 9999.0f;
+    engine.debug_controls_mut().manual_hw       = 1.0f;
+
+    engine.step_one_frame();
+    const auto& st1 = engine.render_stats();
+    check(st1.visible_count + st1.culled_count == st1.extracted_count,
+          "cull-inv: vis+cull==extracted (far camera)");
+    check(st1.visible_count == 0,
+          "cull-inv: 0 visible with far camera");
+
+    engine.shutdown();
+}
+
+// =================================================================
+//  Overlay counters match RenderStats
+// =================================================================
+
+static void test_overlay_matches_render_stats() {
+    de::EngineConfig cfg;
+    cfg.start_scene     = de::StartScene::Crowd;
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "ov-match: init ok");
+
+    engine.step_one_frame();
+
+    const auto& st = engine.render_stats();
+    const auto& ov = engine.debug_overlay();
+
+    // Overlay line 4 = "Vis: N  cull:M  drop:K"
+    char expected[64];
+    std::snprintf(expected, sizeof(expected), "Vis: %u  cull:%u  drop:%u",
+                  st.visible_count, st.culled_count,
+                  st.agent_count - st.extracted_count);
+    check(std::strstr(ov.lines[4], expected) != nullptr,
+          "ov-match: overlay line matches RenderStats");
+
+    engine.shutdown();
+}
+
+// =================================================================
 
 int main() {
     test_crowd_headless();
@@ -378,6 +495,9 @@ int main() {
     test_reset_clears_accumulator();
     test_switch_clears_accumulator();
     test_reset_then_single_step();
+    test_render_frame_pre_cull_after_zoom();
+    test_culling_stats_invariant();
+    test_overlay_matches_render_stats();
 
     std::printf("\nEngineRuntimeTest: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail;

@@ -31,7 +31,8 @@ void extract_debug_overlay(
     bool        paused,
     uint64_t    tick,
     uint32_t    agent_count,
-    uint32_t    instance_count,
+    uint32_t    visible_count,
+    uint32_t    culled_count,
     uint32_t    dropped_count,
     bool        frame_skipped,
     bool        within_budget,
@@ -52,8 +53,8 @@ void extract_debug_overlay(
     std::snprintf(buf, sizeof(buf), "Agents: %u", agent_count);
     out.add(buf);
 
-    std::snprintf(buf, sizeof(buf), "Drawn: %u  drop:%u",
-                  instance_count, dropped_count);
+    std::snprintf(buf, sizeof(buf), "Vis: %u  cull:%u  drop:%u",
+                  visible_count, culled_count, dropped_count);
     out.add(buf);
 
     if (frame_skipped) {

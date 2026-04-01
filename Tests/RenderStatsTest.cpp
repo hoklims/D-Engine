@@ -329,12 +329,14 @@ static void test_overlay_current_frame_coherence() {
     check(std::strstr(ov.lines[3], expected_agents) != nullptr,
           "overlay-coh: agent_count matches current frame");
 
-    // Overlay line 4 = "Drawn: N  drop:M"  -- must show extracted_count.
-    char expected_drawn[32];
-    std::snprintf(expected_drawn, sizeof(expected_drawn), "%u",
-                  rf.extracted_count);
-    check(std::strstr(ov.lines[4], expected_drawn) != nullptr,
-          "overlay-coh: drawn matches current extracted_count");
+    // Overlay line 4 = "Vis: N  cull:M  drop:K".
+    // In auto-frame headless, visible == extracted (no culling).
+    const auto& st = engine.render_stats();
+    char expected_vis[32];
+    std::snprintf(expected_vis, sizeof(expected_vis), "Vis: %u",
+                  st.visible_count);
+    check(std::strstr(ov.lines[4], expected_vis) != nullptr,
+          "overlay-coh: Vis matches render_stats visible_count");
 
     engine.shutdown();
 }

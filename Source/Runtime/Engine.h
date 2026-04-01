@@ -54,7 +54,8 @@ private:
 
     Renderer* renderer_        = nullptr;
     bool      renderer_active_ = false;
-    RenderFrame render_frame_;
+    RenderFrame render_frame_;       // pristine extraction snapshot (pre-cull)
+    RenderFrame culled_frame_;       // work buffer: visible agents compacted for renderer
     RenderCamera camera_;
     RenderStats render_stats_;
     WorldDebugConfig world_debug_config_;
@@ -63,7 +64,6 @@ private:
     OverlayInstance overlay_instances_[k_max_overlay_instances] = {};
     uint32_t overlay_count_ = 0;
     DebugControls debug_;
-    uint32_t pre_cull_extracted_ = 0;
     int8_t current_preset_ = -1;
 
     void begin_frame();
