@@ -157,7 +157,10 @@ void Engine::update_presentation(double alpha) {
 void Engine::render() {
     ScopeTimer t(&wip_telemetry_.render_s);
     if (renderer_active_) {
-        renderer_->resize(window_.width(), window_.height());
+        if (!renderer_->resize(window_.width(), window_.height())) {
+            renderer_active_ = false;
+            return;
+        }
         renderer_->render(render_frame_, camera_);
     }
 }

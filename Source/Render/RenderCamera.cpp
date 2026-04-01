@@ -19,17 +19,24 @@ void RenderCamera::build_ortho(float out[16]) const {
     if (hw <= 0.0f) hw = k_min_half_width;
     if (hh <= 0.0f) hh = k_min_half_width;
 
-    // Column-major ortho matrix (row-major in HLSL sense via root constants):
-    //   [1/hw   0    0   -cx/hw]
-    //   [ 0   1/hh   0   -cy/hh]
-    //   [ 0    0     1     0   ]
-    //   [ 0    0     0     1   ]
-    out[0]  = 1.0f / hw;
-    out[3]  = -center_x / hw;
-    out[5]  = 1.0f / hh;
-    out[7]  = -center_y / hh;
-    out[10] = 1.0f;
-    out[15] = 1.0f;
+    // HLSL column-major layout: out[0..3]=col0, out[4..7]=col1, etc.
+    // HLSL sees the matrix as:
+    //   [out[0]  out[4]  out[8]   out[12]]
+    //   [out[1]  out[5]  out[9]   out[13]]
+    //   [out[2]  out[6]  out[10]  out[14]]
+    //   [out[3]  out[7]  out[11]  out[15]]
+    //
+    // We want:
+    //   [1/hw   0    0   -cx/hw ]
+    //   [ 0   1/hh  0   -cy/hh ]
+    //   [ 0    0    1      0   ]
+    //   [ 0    0    0      1   ]
+    out[0]  = 1.0f / hw;           // col0 row0
+    out[5]  = 1.0f / hh;           // col1 row1
+    out[10] = 1.0f;                // col2 row2
+    out[12] = -center_x / hw;      // col3 row0
+    out[13] = -center_y / hh;      // col3 row1
+    out[15] = 1.0f;                // col3 row3
 }
 
 RenderCamera auto_frame_crowd(const RenderFrame& frame, float aspect) {

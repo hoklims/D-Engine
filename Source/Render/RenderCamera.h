@@ -16,7 +16,9 @@ struct RenderCamera {
     // Derived: half_height = half_width / aspect.
     float half_height() const;
 
-    // Write a column-major 4x4 ortho matrix into out[16].
+    // Write a 4x4 ortho matrix into out[16] in HLSL column-major order.
+    // Column-major layout: out[0..3] = col0, out[4..7] = col1, etc.
+    // Consumed by HLSL mul(ortho, float4(pos,0,1)) via root constants.
     // Maps [center-hw, center+hw] x [center-hh, center+hh] to NDC [-1,1].
     void build_ortho(float out[16]) const;
 };
