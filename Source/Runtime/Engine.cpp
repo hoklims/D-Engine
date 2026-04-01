@@ -309,10 +309,27 @@ void Engine::update_presentation(double alpha) {
 
 void Engine::render() {
     ScopeTimer t(&wip_telemetry_.render_s);
+
+    // Extract overlay data (uses previous frame's render_stats_).
+    extract_debug_overlay(
+        scene_name(config_.start_scene),
+        debug_.paused,
+        frame_info_.sim_tick_index,
+        render_frame_.agent_count,
+        render_stats_.instance_count,
+        render_stats_.dropped_count,
+        render_stats_.frame_skipped,
+        sim_.budget_status().within_budget,
+        overlay_data_);
+    overlay_count_ = generate_overlay_instances(
+        overlay_data_,
+        static_cast<float>(window_.width()),
+        static_cast<float>(window_.height()),
+        overlay_instances_, k_max_overlay_instances);
+
     if (renderer_active_) {
         if (!renderer_->resize(window_.width(), window_.height())) {
             renderer_active_ = false;
-            // Publish coherent stats for the skipped frame.
             render_stats_ = {};
             render_stats_.agent_count     = render_frame_.agent_count;
             render_stats_.extracted_count = render_frame_.extracted_count;
@@ -320,7 +337,8 @@ void Engine::render() {
             render_stats_.frame_skipped   = true;
             return;
         }
-        renderer_->render(render_frame_, camera_, &world_debug_data_);
+        renderer_->render(render_frame_, camera_, &world_debug_data_,
+                         overlay_instances_, overlay_count_);
         render_stats_ = renderer_->stats();
     } else {
         // Headless: populate stats from RenderFrame for telemetry consistency.

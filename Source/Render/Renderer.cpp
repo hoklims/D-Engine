@@ -2,6 +2,7 @@
 #include "Render/RenderCamera.h"
 #include "Render/RenderFrame.h"
 #include "Render/WorldDebugPass.h"
+#include "Render/DebugOverlay.h"
 
 #pragma warning(push, 3)
 #include <d3dcompiler.h>
@@ -319,8 +320,9 @@ bool Renderer::init(HWND hwnd, int32_t width, int32_t height) {
             break;
 
         // Dynamic instance buffer (upload heap, persistently mapped).
-        // Extra room for world debug geometry (ground, grid, axes).
-        ib_capacity_ = k_max_render_agents + k_max_world_debug_instances;
+        // Extra room for world debug geometry + overlay text quads.
+        ib_capacity_ = k_max_render_agents + k_max_world_debug_instances
+                      + k_max_overlay_instances;
         UINT ib_bytes = ib_capacity_ * static_cast<UINT>(sizeof(InstanceData));
 
         D3D12_HEAP_PROPERTIES hp = {};
@@ -355,7 +357,9 @@ bool Renderer::init(HWND hwnd, int32_t width, int32_t height) {
 // -- Render (instanced) -------------------------------------------------
 
 void Renderer::render(const RenderFrame& frame, const RenderCamera& camera,
-                      const WorldDebugData* world_debug) {
+                      const WorldDebugData* world_debug,
+                      const OverlayInstance* overlay,
+                      uint32_t overlay_count) {
     wait_for_gpu();
 
     // -- Fill instance buffer: world debug first, then crowd. --------
@@ -406,7 +410,20 @@ void Renderer::render(const RenderFrame& frame, const RenderCamera& camera,
         crowd_count = limit;
     }
 
-    // -- Update stats. -----------------------------------------------
+    // -- Overlay instances (after crowd in the buffer). ----------------
+
+    uint32_t overlay_offset = world_count + crowd_count;
+    uint32_t overlay_used   = 0;
+
+    if (overlay && overlay_count > 0) {
+        uint32_t cap = ib_capacity_ - overlay_offset;
+        uint32_t lim = (overlay_count < cap) ? overlay_count : cap;
+        std::memcpy(inst + overlay_offset, overlay,
+                    lim * sizeof(InstanceData));
+        overlay_used = lim;
+    }
+
+    // -- Update stats (overlay excluded -- debug only). --------------
 
     stats_.agent_count            = frame.agent_count;
     stats_.extracted_count        = frame.extracted_count;
@@ -455,7 +472,7 @@ void Renderer::render(const RenderFrame& frame, const RenderCamera& camera,
     cmd_list_->ClearRenderTargetView(rtv, clear, 0, nullptr);
     cmd_list_->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
 
-    uint32_t total_count = world_count + crowd_count;
+    uint32_t total_count = world_count + crowd_count + overlay_used;
 
     if (total_count > 0) {
         cmd_list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -488,6 +505,20 @@ void Renderer::render(const RenderFrame& frame, const RenderCamera& camera,
         // Draw crowd (on top).
         if (crowd_count > 0) {
             cmd_list_->DrawIndexedInstanced(6, crowd_count, 0, 0, world_count);
+        }
+
+        // Draw overlay (screen-space projection, on top of everything).
+        if (overlay_used > 0) {
+            float screen_ortho[16] = {};
+            screen_ortho[0]  =  2.0f / static_cast<float>(width_);
+            screen_ortho[5]  = -2.0f / static_cast<float>(height_);
+            screen_ortho[10] = 1.0f;
+            screen_ortho[12] = -1.0f;
+            screen_ortho[13] = 1.0f;
+            screen_ortho[15] = 1.0f;
+            cmd_list_->SetGraphicsRoot32BitConstants(0, 16, screen_ortho, 0);
+            cmd_list_->DrawIndexedInstanced(6, overlay_used, 0, 0,
+                                            world_count + crowd_count);
         }
     }
 

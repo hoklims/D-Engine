@@ -41,7 +41,7 @@ cmake --build Build --config Debug --target EcsTest && ./Build/Tests/Debug/EcsTe
 ./Build/Source/Debug/DEngine.exe
 ```
 
-Tests disponibles : `FixedStepTest`, `TimelineTest`, `TelemetryTest`, `EcsTest`, `RuntimeEcsTest`, `CrowdTest`, `NavTest`, `LodTest`, `MeleeTest`, `SimHashTest`, `RenderFrameTest`, `EngineBootTest`, `EngineRuntimeTest`.
+Tests disponibles : `FixedStepTest`, `TimelineTest`, `TelemetryTest`, `EcsTest`, `RuntimeEcsTest`, `CrowdTest`, `NavTest`, `LodTest`, `MeleeTest`, `SimHashTest`, `RenderFrameTest`, `EngineBootTest`, `EngineRuntimeTest`, `DebugOverlayTest`.
 
 ## Conventions code
 - `/W4 /WX /permissive-` -- zero warnings obligatoire
@@ -136,9 +136,17 @@ ECS archetypal avec stockage SoA (Structure of Arrays). Aucune dependance Win32.
 - Projection orthographique centree (50 unites demi-largeur).
 - Pas de depth, pas de MSAA, pas de textures, pas d'instancing avance.
 
+**Debug overlay** :
+- `DebugOverlayData` : lignes de texte extraites du runtime (scene, paused, tick, agents, budget).
+- `extract_debug_overlay()` : remplit DebugOverlayData depuis l'etat Engine.
+- `BitmapFont.h` : police 5x7 pixels statique (ASCII 32-126, 95 glyphes).
+- `generate_overlay_instances()` : genere des pixel-quads (1 instance par dot allume) + 1 panneau fond.
+- Rendu en 3e pass apres world+crowd, avec matrice ortho screen-space.
+- Cap a k_max_overlay_instances (2048). Pas de texture, reutilise le PSO instancie existant.
+
 **Integration Engine** :
 - `update_presentation()` extrait la RenderFrame.
-- `render()` soumet au Renderer DX12.
+- `render()` extrait l'overlay puis soumet au Renderer DX12.
 - Si le Renderer echoue a l'init, le moteur continue en mode headless.
 
 ### Platform (Source/Platform/)

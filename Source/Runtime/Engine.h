@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Platform/Window.h"
+#include "Render/DebugOverlay.h"
 #include "Render/RenderCamera.h"
 #include "Render/RenderFrame.h"
 #include "Render/RenderStats.h"
@@ -53,6 +54,9 @@ private:
     RenderStats render_stats_;
     WorldDebugConfig world_debug_config_;
     WorldDebugData world_debug_data_;
+    DebugOverlayData overlay_data_;
+    OverlayInstance overlay_instances_[k_max_overlay_instances] = {};
+    uint32_t overlay_count_ = 0;
     DebugControls debug_;
 
     void begin_frame();
