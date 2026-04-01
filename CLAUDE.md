@@ -41,7 +41,7 @@ cmake --build Build --config Debug --target EcsTest && ./Build/Tests/Debug/EcsTe
 ./Build/Source/Debug/DEngine.exe
 ```
 
-Tests disponibles : `FixedStepTest`, `TimelineTest`, `TelemetryTest`, `EcsTest`, `RuntimeEcsTest`, `CrowdTest`, `NavTest`, `LodTest`, `MeleeTest`, `SimHashTest`, `RenderFrameTest`, `EngineBootTest`, `EngineRuntimeTest`, `DebugOverlayTest`, `AvoidanceTest`.
+Tests disponibles : `FixedStepTest`, `TimelineTest`, `TelemetryTest`, `EcsTest`, `RuntimeEcsTest`, `CrowdTest`, `NavTest`, `LodTest`, `MeleeTest`, `SimHashTest`, `RenderFrameTest`, `EngineBootTest`, `EngineRuntimeTest`, `DebugOverlayTest`, `AvoidanceTest`, `BenchmarkTest`.
 
 ## Conventions code
 - `/W4 /WX /permissive-` -- zero warnings obligatoire

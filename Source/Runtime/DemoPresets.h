@@ -90,6 +90,44 @@ static constexpr DemoPreset k_demo_presets[] = {
         /* world_debug */ { true, true, 80.0f, 20.0f },
         /* camera_hw */ 65.0f,
     },
+
+    // -- Stress presets ---------------------------------------------------------
+    // Designed to push specific axes for perf measurement and budget testing.
+
+    // 4: StressLane -- 200 agents/team, wide front, long approach.
+    //    Axis: raw agent count + targeting scan cost.
+    {
+        "StressLane",
+        StartScene::Crowd,
+        /* crowd */ { 200, 40.0f, 0.8f, 3.0f, 100.0f, 2.0f, 10.0f, 1.0f, 0.6f, 5.0f, 25.0f,
+                      /* avoidance */ 3.0f, 0.8f, 2.5f },
+        /* bf */ 60, 40, 1.0f, -30.0f, -20.0f, nullptr, 0,
+        /* world_debug */ { true, true, 80.0f, 10.0f },
+        /* camera_hw */ 55.0f,
+    },
+    // 5: StressDenseMelee -- 300 agents/team, tight spawn, instant brawl.
+    //    Axis: melee broadphase + separation density.
+    {
+        "StressDenseMelee",
+        StartScene::Crowd,
+        /* crowd */ { 300, 8.0f, 0.5f, 2.0f, 60.0f, 1.5f, 6.0f, 0.4f, 0.5f, 6.0f, 6.0f,
+                      /* avoidance */ 2.0f, 0.5f, 2.0f },
+        /* bf */ 60, 40, 1.0f, -30.0f, -20.0f, nullptr, 0,
+        /* world_debug */ { true, true, 30.0f, 5.0f },
+        /* camera_hw */ 25.0f,
+    },
+    // 6: StressWallGap -- 150 agents/team through a funnel.
+    //    Axis: nav queries + congestion at chokepoint.
+    {
+        "StressWallGap",
+        StartScene::Battlefield,
+        /* crowd */ { 150, 25.0f, 0.6f, 3.0f, 100.0f, 2.0f, 10.0f, 1.0f, 0.6f, 5.0f, 15.0f,
+                      /* avoidance */ 3.0f, 0.8f, 2.5f },
+        /* bf */ 60, 40, 1.0f, -30.0f, -20.0f,
+                 k_wall_gap_obstacles, k_wall_gap_obstacle_count,
+        /* world_debug */ { true, true, 50.0f, 10.0f },
+        /* camera_hw */ 45.0f,
+    },
 };
 
 static constexpr int k_demo_preset_count =

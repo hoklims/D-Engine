@@ -1,0 +1,106 @@
+#pragma once
+
+// Minimal headless benchmark harness for preset stress testing.
+//
+// Usage:
+//   BenchmarkResult r = run_benchmark(k_demo_presets[4], 600);
+//   // r contains hash, timing, budget, agent stats.
+//
+//   bool same = compare_runs(r1, r2);
+//   // true if hashes and structural stats match (determinism check).
+
+#include "Runtime/DemoPresets.h"
+#include "Runtime/SimState.h"
+
+#include <chrono>
+#include <cstdint>
+#include <cstring>
+
+namespace de {
+
+struct BenchmarkResult {
+    char     preset_name[k_system_name_max] = {};
+    uint32_t ticks_run          = 0;
+    uint64_t final_hash         = 0;
+
+    // Timing (wall-clock, seconds).
+    double   total_wall_s       = 0.0;
+    double   avg_tick_s         = 0.0;
+    double   max_tick_s         = 0.0;
+
+    // Agent metrics (peak over all ticks).
+    uint32_t peak_agent_count   = 0;
+    uint32_t peak_lod_t0_count  = 0;
+
+    // Budget (accumulated over all ticks).
+    uint32_t total_violations   = 0;
+    uint8_t  max_pressure_applied = 0;
+    uint8_t  max_pressure_pending = 0;
+};
+
+// Run a preset for `tick_count` ticks at `dt` (default 1/60).
+// Optionally supply a budget config; pass nullptr to use defaults.
+// Optionally supply a budget response config; pass nullptr to skip.
+inline BenchmarkResult run_benchmark(
+        const DemoPreset& preset,
+        uint32_t tick_count,
+        double dt = 1.0 / 60.0,
+        const SimBudgetConfig* budget_cfg = nullptr,
+        const SimBudgetResponseConfig* response_cfg = nullptr) {
+
+    BenchmarkResult r;
+    std::snprintf(r.preset_name, k_system_name_max, "%s", preset.name);
+
+    SimState sim;
+    apply_demo_preset(sim, preset);
+
+    if (budget_cfg) sim.set_budget_config(*budget_cfg);
+    if (response_cfg) sim.set_budget_response_config(*response_cfg);
+
+    auto wall_start = std::chrono::high_resolution_clock::now();
+
+    for (uint32_t i = 0; i < tick_count; ++i) {
+        auto t0 = std::chrono::high_resolution_clock::now();
+        sim.tick(dt);
+        auto t1 = std::chrono::high_resolution_clock::now();
+
+        double tick_s = std::chrono::duration<double>(t1 - t0).count();
+        if (tick_s > r.max_tick_s) r.max_tick_s = tick_s;
+
+        SimSnapshot snap = sim.snapshot();
+
+        if (snap.crowd_agent_count > r.peak_agent_count)
+            r.peak_agent_count = snap.crowd_agent_count;
+        if (snap.lod_tier_counts[0] > r.peak_lod_t0_count)
+            r.peak_lod_t0_count = snap.lod_tier_counts[0];
+
+        if (!snap.budget.within_budget)
+            ++r.total_violations;
+        if (snap.budget_response_applied_pressure > r.max_pressure_applied)
+            r.max_pressure_applied = snap.budget_response_applied_pressure;
+        if (snap.budget_response_pending_pressure > r.max_pressure_pending)
+            r.max_pressure_pending = snap.budget_response_pending_pressure;
+    }
+
+    auto wall_end = std::chrono::high_resolution_clock::now();
+    r.total_wall_s = std::chrono::duration<double>(wall_end - wall_start).count();
+    r.ticks_run    = tick_count;
+    r.final_hash   = sim.sim_hash();
+    r.avg_tick_s   = (tick_count > 0) ? r.total_wall_s / tick_count : 0.0;
+
+    return r;
+}
+
+// Compare two benchmark runs for structural equality.
+// Returns true if hashes, tick counts, and peak agent counts match.
+// Timing is intentionally excluded (non-deterministic).
+inline bool compare_runs(const BenchmarkResult& a, const BenchmarkResult& b) {
+    if (a.ticks_run != b.ticks_run) return false;
+    if (a.final_hash != b.final_hash) return false;
+    if (a.peak_agent_count != b.peak_agent_count) return false;
+    if (a.peak_lod_t0_count != b.peak_lod_t0_count) return false;
+    if (a.total_violations != b.total_violations) return false;
+    return true;
+}
+
+}  // namespace de

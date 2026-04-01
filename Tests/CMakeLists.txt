@@ -204,6 +204,15 @@ target_link_libraries(AvoidanceTest PRIVATE DEcs)
 target_include_directories(AvoidanceTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
 add_test(NAME AvoidanceTest COMMAND AvoidanceTest)
 
+add_executable(BenchmarkTest
+    BenchmarkTest.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/SimState.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/CrowdSystems.cpp
+)
+target_link_libraries(BenchmarkTest PRIVATE DEcs)
+target_include_directories(BenchmarkTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
+add_test(NAME BenchmarkTest COMMAND BenchmarkTest)
+
 add_executable(EngineRuntimeTest
     EngineRuntimeTest.cpp
     ${CMAKE_SOURCE_DIR}/Source/Runtime/Engine.cpp

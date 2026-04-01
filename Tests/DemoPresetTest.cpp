@@ -21,7 +21,7 @@ static void check(bool cond, const char* name) {
 // =================================================================
 
 static void test_preset_table_valid() {
-    check(de::k_demo_preset_count == 4, "table: 4 presets");
+    check(de::k_demo_preset_count == 7, "table: 7 presets");
     for (int i = 0; i < de::k_demo_preset_count; ++i) {
         const auto& p = de::k_demo_presets[i];
         check(p.name != nullptr,            "table: name not null");
@@ -38,7 +38,7 @@ static void test_preset_table_valid() {
 
 static void test_preset_name() {
     check(de::preset_name(-1) == nullptr,  "name: -1 -> null");
-    check(de::preset_name(4) == nullptr,   "name: 4 -> null");
+    check(de::preset_name(7) == nullptr,   "name: 7 -> null");
     check(std::strcmp(de::preset_name(0), "LaneClash") == 0,
           "name: 0 -> LaneClash");
     check(std::strcmp(de::preset_name(1), "DenseMelee") == 0,
@@ -47,6 +47,12 @@ static void test_preset_name() {
           "name: 2 -> WallGap");
     check(std::strcmp(de::preset_name(3), "SparseApproach") == 0,
           "name: 3 -> SparseApproach");
+    check(std::strcmp(de::preset_name(4), "StressLane") == 0,
+          "name: 4 -> StressLane");
+    check(std::strcmp(de::preset_name(5), "StressDenseMelee") == 0,
+          "name: 5 -> StressDenseMelee");
+    check(std::strcmp(de::preset_name(6), "StressWallGap") == 0,
+          "name: 6 -> StressWallGap");
 }
 
 // =================================================================
