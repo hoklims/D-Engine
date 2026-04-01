@@ -25,7 +25,7 @@ uint32_t extract_render_frame(World& world, uint64_t tick, uint64_t frame_id, Re
                 item.team_id    = team.id;
                 item.lod_tier   = lod.tier;
                 item.health_pct = (hp.max > 0.0f) ? (hp.current / hp.max) : 0.0f;
-                item.has_target = tgt.has_target;
+                item.has_target = tgt.has_target && world.alive(tgt.entity);
 
                 // Direction: velocity > desired direction > (0,1).
                 float vlen2 = vel.dx * vel.dx + vel.dy * vel.dy;

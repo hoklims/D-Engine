@@ -349,13 +349,14 @@ static void test_target_independent_of_velocity() {
     cfg.team_spacing    = 200.0f;
     sim.bootstrap_crowd(cfg);
 
-    // Manually set Target.has_target=true and Velocity=0 on first agent.
+    // Set Target to a valid alive entity (self) with zero velocity.
     uint32_t found = 0;
     sim.world.each<de::CrowdAgent, de::Velocity, de::Target>(
-        [&](de::EntityId, de::CrowdAgent&, de::Velocity& v, de::Target& t) {
+        [&](de::EntityId eid, de::CrowdAgent&, de::Velocity& v, de::Target& t) {
             if (found == 0) {
                 v.dx = 0.0f;  v.dy = 0.0f;
                 t.has_target = true;
+                t.entity     = eid;   // self-reference, alive
             }
             ++found;
         });
@@ -368,6 +369,79 @@ static void test_target_independent_of_velocity() {
         if (frame.agents[i].has_target) { ok = true; break; }
     }
     check(ok, "target-vel: has_target true despite zero velocity");
+}
+
+// =================================================================
+//  has_target false when target entity is destroyed
+// =================================================================
+
+static void test_has_target_dead_entity() {
+    de::SimState sim;
+    de::CrowdConfig cfg;
+    cfg.agents_per_team = 2;
+    cfg.team_spacing    = 200.0f;
+    sim.bootstrap_crowd(cfg);
+
+    // Pick one agent from each team.
+    de::EntityId attacker = {};
+    de::EntityId victim   = {};
+    bool fa = false, fv = false;
+    sim.world.each<de::CrowdAgent, de::Team>(
+        [&](de::EntityId eid, de::CrowdAgent&, de::Team& t) {
+            if (t.id == 0 && !fa) { attacker = eid; fa = true; }
+            if (t.id == 1 && !fv) { victim   = eid; fv = true; }
+        });
+
+    // Point attacker at victim.
+    auto* tgt     = sim.world.get<de::Target>(attacker);
+    tgt->has_target = true;
+    tgt->entity     = victim;
+
+    // Target alive -> has_target true.
+    de::RenderFrame f1;
+    de::extract_render_frame(sim.world, 0, 0, f1);
+    bool alive_ok = false;
+    for (uint32_t i = 0; i < f1.extracted_count; ++i)
+        if (f1.agents[i].has_target) { alive_ok = true; break; }
+    check(alive_ok, "dead-tgt: has_target true when target alive");
+
+    // Destroy victim.
+    sim.world.destroy(victim);
+
+    // Target dead -> has_target must be false.
+    de::RenderFrame f2;
+    de::extract_render_frame(sim.world, 1, 1, f2);
+    bool stale = false;
+    for (uint32_t i = 0; i < f2.extracted_count; ++i)
+        if (f2.agents[i].has_target) { stale = true; break; }
+    check(!stale, "dead-tgt: has_target false after target destroyed");
+}
+
+// =================================================================
+//  has_target false when target entity is invalid / out of range
+// =================================================================
+
+static void test_has_target_invalid_entity() {
+    de::SimState sim;
+    de::CrowdConfig cfg;
+    cfg.agents_per_team = 1;
+    cfg.team_spacing    = 200.0f;
+    sim.bootstrap_crowd(cfg);
+
+    // Set has_target with a fabricated entity that doesn't exist.
+    sim.world.each<de::CrowdAgent, de::Target>(
+        [&](de::EntityId, de::CrowdAgent&, de::Target& t) {
+            t.has_target = true;
+            t.entity     = {9999, 0};
+        });
+
+    de::RenderFrame frame;
+    de::extract_render_frame(sim.world, 0, 0, frame);
+
+    bool any = false;
+    for (uint32_t i = 0; i < frame.extracted_count; ++i)
+        if (frame.agents[i].has_target) { any = true; break; }
+    check(!any, "inv-tgt: has_target false with invalid entity");
 }
 
 // =================================================================
@@ -387,6 +461,8 @@ int main() {
     test_direction_desired_fallback();
     test_has_target_contract();
     test_target_independent_of_velocity();
+    test_has_target_dead_entity();
+    test_has_target_invalid_entity();
 
     std::printf("\nRenderFrameTest: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail;
