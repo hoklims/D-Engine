@@ -251,6 +251,50 @@ static void test_failed_init_stats_clean() {
 }
 
 // =================================================================
+//  draw_call_count invariant: world + crowd
+// =================================================================
+
+static void test_draw_call_invariant_headless() {
+    de::EngineConfig cfg;
+    cfg.start_scene     = de::StartScene::Crowd;
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "dc-inv: init ok");
+
+    engine.step_one_frame();
+
+    const auto& st = engine.render_stats();
+    // Headless: no draw calls at all.
+    uint32_t crowd_dc = (st.instance_count > 0) ? 1u : 0u;
+    check(st.draw_call_count == st.world_draw_call_count + crowd_dc,
+          "dc-inv: draw_call == world + crowd (headless)");
+    check(st.world_draw_call_count == 0,
+          "dc-inv: world_draw_call == 0 (headless)");
+
+    engine.shutdown();
+}
+
+static void test_draw_call_invariant_empty_headless() {
+    de::EngineConfig cfg;
+    cfg.start_scene     = de::StartScene::Basic;
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "dc-empty: init ok");
+
+    engine.step_one_frame();
+
+    const auto& st = engine.render_stats();
+    check(st.draw_call_count == 0,
+          "dc-empty: draw_call == 0 (empty headless)");
+    check(st.world_draw_call_count == 0,
+          "dc-empty: world_draw_call == 0 (empty headless)");
+
+    engine.shutdown();
+}
+
+// =================================================================
 
 int main() {
     test_headless_stats_published();
@@ -261,6 +305,8 @@ int main() {
     test_reinit_stats_fresh();
     test_reinit_crowd_to_crowd();
     test_failed_init_stats_clean();
+    test_draw_call_invariant_headless();
+    test_draw_call_invariant_empty_headless();
 
     std::printf("\nRenderStatsTest: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail;

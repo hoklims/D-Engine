@@ -156,6 +156,45 @@ static void test_no_overflow() {
 }
 
 // =================================================================
+//  Dense grid: axes survive even when grid saturates the budget
+// =================================================================
+
+static void test_dense_grid_axes_survive() {
+    de::WorldDebugConfig cfg;
+    cfg.show_ground  = true;
+    cfg.show_grid    = true;
+    cfg.world_extent = 10000.0f;
+    cfg.grid_spacing = 0.5f;  // ~40001 lines per axis, way over 512 cap
+
+    de::WorldDebugData data;
+    de::generate_world_debug(cfg, data);
+
+    check(data.count == de::k_max_world_debug_instances,
+          "dense: fills exactly to cap");
+
+    // Last two instances must be the axes (guaranteed by reservation).
+    const auto& x_axis = data.items[data.count - 2];
+    const auto& y_axis = data.items[data.count - 1];
+
+    check(x_axis.pos_x == 0.0f && x_axis.pos_y == 0.0f,
+          "dense: x-axis at origin");
+    check(y_axis.pos_x == 0.0f && y_axis.pos_y == 0.0f,
+          "dense: y-axis at origin");
+
+    // X axis: reddish, wide in X.
+    check(x_axis.r > x_axis.g && x_axis.r > x_axis.b,
+          "dense: x-axis is reddish");
+    check(x_axis.half_sx > x_axis.half_sy,
+          "dense: x-axis wider than tall");
+
+    // Y axis: greenish, tall in Y.
+    check(y_axis.g > y_axis.r && y_axis.g > y_axis.b,
+          "dense: y-axis is greenish");
+    check(y_axis.half_sy > y_axis.half_sx,
+          "dense: y-axis taller than wide");
+}
+
+// =================================================================
 //  Idempotent: calling twice produces same result
 // =================================================================
 
@@ -203,6 +242,7 @@ int main() {
     test_custom_spacing();
     test_origin_axes();
     test_no_overflow();
+    test_dense_grid_axes_survive();
     test_idempotent();
     test_zero_spacing();
 
