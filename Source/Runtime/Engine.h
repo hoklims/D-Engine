@@ -4,6 +4,7 @@
 #include "Render/RenderCamera.h"
 #include "Render/RenderFrame.h"
 #include "Render/RenderStats.h"
+#include "Render/WorldDebugPass.h"
 #include "Runtime/Clock.h"
 #include "Runtime/DebugControls.h"
 #include "Runtime/EngineConfig.h"
@@ -50,6 +51,8 @@ private:
     RenderFrame render_frame_;
     RenderCamera camera_;
     RenderStats render_stats_;
+    WorldDebugConfig world_debug_config_;
+    WorldDebugData world_debug_data_;
     DebugControls debug_;
 
     void begin_frame();

@@ -1,6 +1,7 @@
 #include "Render/Renderer.h"
 #include "Render/RenderCamera.h"
 #include "Render/RenderFrame.h"
+#include "Render/WorldDebugPass.h"
 
 #pragma warning(push, 3)
 #include <d3dcompiler.h>
@@ -26,7 +27,7 @@ struct VSIn {
     float2 local_pos : POSITION;
     // Per-instance data (slot 1).
     float2 world_pos : INST_POS;
-    float  half_size : INST_SIZE;
+    float2 half_size : INST_SIZE;
     float4 color     : INST_COLOR;
 };
 
@@ -51,7 +52,8 @@ float4 PSMain(PSIn i) : SV_TARGET { return i.col; }
 struct InstanceData {
     float pos_x;
     float pos_y;
-    float half_size;
+    float half_sx;
+    float half_sy;
     float r, g, b, a;
 };
 
@@ -167,9 +169,9 @@ bool Renderer::create_pipeline() {
         // Slot 1: per-instance.
         { "INST_POS",   0, DXGI_FORMAT_R32G32_FLOAT,       1,  0,
           D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1 },
-        { "INST_SIZE",  0, DXGI_FORMAT_R32_FLOAT,          1,  8,
+        { "INST_SIZE",  0, DXGI_FORMAT_R32G32_FLOAT,       1,  8,
           D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1 },
-        { "INST_COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 12,
+        { "INST_COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 16,
           D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA, 1 },
     };
 
@@ -317,7 +319,8 @@ bool Renderer::init(HWND hwnd, int32_t width, int32_t height) {
             break;
 
         // Dynamic instance buffer (upload heap, persistently mapped).
-        ib_capacity_ = k_max_render_agents;
+        // Extra room for world debug geometry (ground, grid, axes).
+        ib_capacity_ = k_max_render_agents + k_max_world_debug_instances;
         UINT ib_bytes = ib_capacity_ * static_cast<UINT>(sizeof(InstanceData));
 
         D3D12_HEAP_PROPERTIES hp = {};
@@ -351,44 +354,74 @@ bool Renderer::init(HWND hwnd, int32_t width, int32_t height) {
 
 // -- Render (instanced) -------------------------------------------------
 
-void Renderer::render(const RenderFrame& frame, const RenderCamera& camera) {
+void Renderer::render(const RenderFrame& frame, const RenderCamera& camera,
+                      const WorldDebugData* world_debug) {
     wait_for_gpu();
 
-    // Fill instance buffer.
-    uint32_t instance_count = 0;
-    {
-        auto* inst = static_cast<InstanceData*>(ib_mapped_);
-        uint32_t limit = (frame.extracted_count < ib_capacity_)
-                         ? frame.extracted_count : ib_capacity_;
+    // -- Fill instance buffer: world debug first, then crowd. --------
 
+    auto* inst = static_cast<InstanceData*>(ib_mapped_);
+    uint32_t world_count = 0;
+    uint32_t crowd_count = 0;
+
+    // World debug instances (drawn behind crowd).
+    if (world_debug && world_debug->count > 0) {
+        uint32_t limit = (world_debug->count < k_max_world_debug_instances)
+                         ? world_debug->count : k_max_world_debug_instances;
+        for (uint32_t i = 0; i < limit; ++i) {
+            const auto& w = world_debug->items[i];
+            inst[i].pos_x   = w.pos_x;
+            inst[i].pos_y   = w.pos_y;
+            inst[i].half_sx = w.half_sx;
+            inst[i].half_sy = w.half_sy;
+            inst[i].r       = w.r;
+            inst[i].g       = w.g;
+            inst[i].b       = w.b;
+            inst[i].a       = w.a;
+        }
+        world_count = limit;
+    }
+
+    // Crowd instances.
+    {
+        uint32_t crowd_cap = ib_capacity_ - world_count;
+        uint32_t limit = (frame.extracted_count < crowd_cap)
+                         ? frame.extracted_count : crowd_cap;
+
+        InstanceData* dst = inst + world_count;
         for (uint32_t i = 0; i < limit; ++i) {
             const auto& a = frame.agents[i];
             uint32_t ci = (a.team_id < k_team_color_count) ? a.team_id : 0u;
             float hp = (a.health_pct > 0.0f) ? a.health_pct : 0.1f;
 
-            inst[i].pos_x     = a.x;
-            inst[i].pos_y     = a.y;
-            inst[i].half_size = k_half_size;
-            inst[i].r         = k_team_colors[ci][0] * hp;
-            inst[i].g         = k_team_colors[ci][1] * hp;
-            inst[i].b         = k_team_colors[ci][2] * hp;
-            inst[i].a         = k_team_colors[ci][3];
+            dst[i].pos_x   = a.x;
+            dst[i].pos_y   = a.y;
+            dst[i].half_sx = k_half_size;
+            dst[i].half_sy = k_half_size;
+            dst[i].r       = k_team_colors[ci][0] * hp;
+            dst[i].g       = k_team_colors[ci][1] * hp;
+            dst[i].b       = k_team_colors[ci][2] * hp;
+            dst[i].a       = k_team_colors[ci][3];
         }
-        instance_count = limit;
+        crowd_count = limit;
     }
 
-    // Update stats.
-    stats_.agent_count     = frame.agent_count;
-    stats_.extracted_count = frame.extracted_count;
-    stats_.instance_count  = instance_count;
-    stats_.draw_call_count = (instance_count > 0) ? 1u : 0u;
-    stats_.dropped_count   = frame.agent_count - instance_count;
-    stats_.frame_skipped   = false;
+    // -- Update stats. -----------------------------------------------
+
+    stats_.agent_count            = frame.agent_count;
+    stats_.extracted_count        = frame.extracted_count;
+    stats_.instance_count         = crowd_count;
+    stats_.draw_call_count        = (crowd_count > 0 ? 1u : 0u)
+                                  + (world_count > 0 ? 1u : 0u);
+    stats_.dropped_count          = frame.agent_count - crowd_count;
+    stats_.world_draw_call_count  = (world_count > 0) ? 1u : 0u;
+    stats_.frame_skipped          = false;
+
+    // -- Record command list. ----------------------------------------
 
     cmd_alloc_->Reset();
     cmd_list_->Reset(cmd_alloc_.Get(), pso_.Get());
 
-    // Build ortho matrix from camera.
     float ortho[16] = {};
     camera.build_ortho(ortho);
 
@@ -422,8 +455,9 @@ void Renderer::render(const RenderFrame& frame, const RenderCamera& camera) {
     cmd_list_->ClearRenderTargetView(rtv, clear, 0, nullptr);
     cmd_list_->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
 
-    // Draw instanced crowd quads.
-    if (instance_count > 0) {
+    uint32_t total_count = world_count + crowd_count;
+
+    if (total_count > 0) {
         cmd_list_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
         // Slot 0: quad vertices.
@@ -432,23 +466,29 @@ void Renderer::render(const RenderFrame& frame, const RenderCamera& camera) {
         vbv.SizeInBytes    = sizeof(k_quad_verts);
         vbv.StrideInBytes  = sizeof(QuadVertex);
 
-        // Slot 1: instance data.
+        // Slot 1: instance data (world debug + crowd contiguous).
         D3D12_VERTEX_BUFFER_VIEW ibv = {};
         ibv.BufferLocation = instance_buffer_->GetGPUVirtualAddress();
-        ibv.SizeInBytes    = instance_count * static_cast<UINT>(sizeof(InstanceData));
+        ibv.SizeInBytes    = total_count * static_cast<UINT>(sizeof(InstanceData));
         ibv.StrideInBytes  = static_cast<UINT>(sizeof(InstanceData));
 
         D3D12_VERTEX_BUFFER_VIEW views[] = { vbv, ibv };
         cmd_list_->IASetVertexBuffers(0, 2, views);
 
-        // Index buffer.
         D3D12_INDEX_BUFFER_VIEW ixv = {};
         ixv.BufferLocation = quad_ib_->GetGPUVirtualAddress();
         ixv.SizeInBytes    = sizeof(k_quad_indices);
         ixv.Format         = DXGI_FORMAT_R16_UINT;
         cmd_list_->IASetIndexBuffer(&ixv);
 
-        cmd_list_->DrawIndexedInstanced(6, instance_count, 0, 0, 0);
+        // Draw world debug (behind crowd).
+        if (world_count > 0) {
+            cmd_list_->DrawIndexedInstanced(6, world_count, 0, 0, 0);
+        }
+        // Draw crowd (on top).
+        if (crowd_count > 0) {
+            cmd_list_->DrawIndexedInstanced(6, crowd_count, 0, 0, world_count);
+        }
     }
 
     // Transition: RENDER_TARGET -> PRESENT.

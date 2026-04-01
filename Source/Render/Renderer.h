@@ -23,6 +23,7 @@ namespace de {
 
 struct RenderFrame;
 struct RenderCamera;
+struct WorldDebugData;
 
 // Minimal DX12 instanced renderer -- draws crowd as colored quads.
 // One shared quad (4 verts + 6 indices), one instance per agent.
@@ -35,7 +36,8 @@ struct Renderer {
     Renderer& operator=(const Renderer&) = delete;
 
     bool init(HWND hwnd, int32_t width, int32_t height);
-    void render(const RenderFrame& frame, const RenderCamera& camera);
+    void render(const RenderFrame& frame, const RenderCamera& camera,
+                const WorldDebugData* world_debug = nullptr);
     bool resize(int32_t width, int32_t height);
     void shutdown();
 

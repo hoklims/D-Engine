@@ -153,11 +153,19 @@ add_executable(RenderStatsTest
     ${CMAKE_SOURCE_DIR}/Source/Render/RenderFrame.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/RenderCamera.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/Renderer.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/WorldDebugPass.cpp
     ${CMAKE_SOURCE_DIR}/Source/Platform/Window.cpp
 )
 target_link_libraries(RenderStatsTest PRIVATE DEcs d3d12 dxgi d3dcompiler)
 target_include_directories(RenderStatsTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
 add_test(NAME RenderStatsTest COMMAND RenderStatsTest)
+
+add_executable(WorldDebugTest
+    WorldDebugTest.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/WorldDebugPass.cpp
+)
+target_include_directories(WorldDebugTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
+add_test(NAME WorldDebugTest COMMAND WorldDebugTest)
 
 add_executable(EngineRuntimeTest
     EngineRuntimeTest.cpp
@@ -171,6 +179,7 @@ add_executable(EngineRuntimeTest
     ${CMAKE_SOURCE_DIR}/Source/Render/RenderFrame.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/RenderCamera.cpp
     ${CMAKE_SOURCE_DIR}/Source/Render/Renderer.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/WorldDebugPass.cpp
     ${CMAKE_SOURCE_DIR}/Source/Platform/Window.cpp
 )
 target_link_libraries(EngineRuntimeTest PRIVATE DEcs d3d12 dxgi d3dcompiler)

@@ -19,9 +19,10 @@ struct RenderStats {
     uint32_t agent_count       = 0;
     uint32_t extracted_count   = 0;
     uint32_t instance_count    = 0;
-    uint32_t draw_call_count   = 0;
-    uint32_t dropped_count     = 0;
-    bool     frame_skipped     = false;
+    uint32_t draw_call_count        = 0;
+    uint32_t dropped_count          = 0;
+    uint32_t world_draw_call_count  = 0;
+    bool     frame_skipped          = false;
 };
 
 }  // namespace de

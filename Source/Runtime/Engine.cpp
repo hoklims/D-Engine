@@ -42,6 +42,8 @@ bool Engine::init(const EngineConfig& cfg) {
     default:                      sim_.bootstrap_crowd();         break;
     }
 
+    generate_world_debug(world_debug_config_, world_debug_data_);
+
     if (config_.enable_renderer) {
         renderer_ = new Renderer();
         renderer_active_ = renderer_->init(window_.handle(), window_.width(), window_.height());
@@ -318,7 +320,7 @@ void Engine::render() {
             render_stats_.frame_skipped   = true;
             return;
         }
-        renderer_->render(render_frame_, camera_);
+        renderer_->render(render_frame_, camera_, &world_debug_data_);
         render_stats_ = renderer_->stats();
     } else {
         // Headless: populate stats from RenderFrame for telemetry consistency.

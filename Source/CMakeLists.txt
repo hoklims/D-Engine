@@ -31,6 +31,8 @@ add_executable(DEngine WIN32
     Render/RenderFrame.cpp
     Render/Renderer.h
     Render/Renderer.cpp
+    Render/WorldDebugPass.h
+    Render/WorldDebugPass.cpp
 )
 
 target_include_directories(DEngine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
