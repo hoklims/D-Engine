@@ -134,6 +134,23 @@ target_link_libraries(EngineBootTest PRIVATE DEcs)
 target_include_directories(EngineBootTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
 add_test(NAME EngineBootTest COMMAND EngineBootTest)
 
+add_executable(RenderStatsTest
+    RenderStatsTest.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/Engine.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/SimState.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/CrowdSystems.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/Clock.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/FixedStep.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/ScopeTimer.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/RenderFrame.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/RenderCamera.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/Renderer.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Platform/Window.cpp
+)
+target_link_libraries(RenderStatsTest PRIVATE DEcs d3d12 dxgi d3dcompiler)
+target_include_directories(RenderStatsTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
+add_test(NAME RenderStatsTest COMMAND RenderStatsTest)
+
 add_executable(EngineRuntimeTest
     EngineRuntimeTest.cpp
     ${CMAKE_SOURCE_DIR}/Source/Runtime/Engine.cpp

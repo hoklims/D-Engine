@@ -163,6 +163,12 @@ void Engine::render() {
     if (renderer_active_) {
         if (!renderer_->resize(window_.width(), window_.height())) {
             renderer_active_ = false;
+            // Publish coherent stats for the skipped frame.
+            render_stats_ = {};
+            render_stats_.agent_count     = render_frame_.agent_count;
+            render_stats_.extracted_count = render_frame_.extracted_count;
+            render_stats_.dropped_count   = render_frame_.agent_count;
+            render_stats_.frame_skipped   = true;
             return;
         }
         renderer_->render(render_frame_, camera_);
@@ -170,7 +176,9 @@ void Engine::render() {
     } else {
         // Headless: populate stats from RenderFrame for telemetry consistency.
         render_stats_ = {};
+        render_stats_.agent_count     = render_frame_.agent_count;
         render_stats_.extracted_count = render_frame_.extracted_count;
+        render_stats_.dropped_count   = render_frame_.agent_count;
     }
 }
 

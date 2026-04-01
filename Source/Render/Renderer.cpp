@@ -378,11 +378,12 @@ void Renderer::render(const RenderFrame& frame, const RenderCamera& camera) {
     }
 
     // Update stats.
+    stats_.agent_count     = frame.agent_count;
     stats_.extracted_count = frame.extracted_count;
     stats_.instance_count  = instance_count;
     stats_.draw_call_count = (instance_count > 0) ? 1u : 0u;
-    stats_.dropped_count   = (frame.extracted_count > ib_capacity_)
-                             ? (frame.extracted_count - ib_capacity_) : 0u;
+    stats_.dropped_count   = frame.agent_count - instance_count;
+    stats_.frame_skipped   = false;
 
     cmd_alloc_->Reset();
     cmd_list_->Reset(cmd_alloc_.Get(), pso_.Get());

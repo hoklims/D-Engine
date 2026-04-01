@@ -5,11 +5,23 @@
 namespace de {
 
 // Per-frame render telemetry snapshot.
+//
+// Contrat:
+//   agent_count      = total crowd agents in the World (before any cap)
+//   extracted_count   = agents extracted into RenderFrame (capped at k_max_render_agents)
+//   instance_count    = instances actually submitted to the GPU draw call
+//   dropped_count     = agent_count - instance_count  (agents NOT rendered)
+//   draw_call_count   = number of DrawIndexedInstanced calls (0 or 1)
+//   frame_skipped     = true if the frame was not rendered (resize failure etc.)
+//
+// Invariant: instance_count + dropped_count == agent_count
 struct RenderStats {
-    uint32_t extracted_count    = 0;  // agents in RenderFrame
-    uint32_t instance_count     = 0;  // instances actually submitted to GPU
-    uint32_t draw_call_count    = 0;  // DrawInstanced calls this frame
-    uint32_t dropped_count      = 0;  // agents over instance cap
+    uint32_t agent_count       = 0;
+    uint32_t extracted_count   = 0;
+    uint32_t instance_count    = 0;
+    uint32_t draw_call_count   = 0;
+    uint32_t dropped_count     = 0;
+    bool     frame_skipped     = false;
 };
 
 }  // namespace de
