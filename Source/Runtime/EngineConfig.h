@@ -29,6 +29,12 @@ struct EngineConfig {
 
     // Set to false to skip DX12 renderer creation (headless mode).
     bool enable_renderer = true;
+
+    // Demo preset index. -1 = use start_scene, 0+ = use preset table.
+    // Engine::init() (no-arg) sets this to 0 so DEngine.exe starts on
+    // the first preset. Tests that create their own EngineConfig get -1
+    // by default (no preset, uses start_scene).
+    int8_t demo_preset = -1;
 };
 
 } // namespace de

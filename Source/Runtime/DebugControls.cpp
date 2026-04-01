@@ -18,6 +18,9 @@ void DebugControls::apply(const DebugAction& a) {
     if (a.switch_scene >= 0)
         scene_switch = a.switch_scene;
 
+    if (a.switch_preset >= 0)
+        preset_switch = a.switch_preset;
+
     // Camera.
     if (a.toggle_auto_frame)
         auto_frame = !auto_frame;
@@ -39,6 +42,7 @@ void DebugControls::consume() {
     step_requested  = false;
     reset_requested = false;
     scene_switch    = -1;
+    preset_switch   = -1;
 }
 
 const char* scene_name(StartScene s) {

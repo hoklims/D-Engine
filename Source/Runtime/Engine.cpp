@@ -1,4 +1,5 @@
 #include "Runtime/Engine.h"
+#include "Runtime/DemoPresets.h"
 #include "Render/Renderer.h"
 
 #include <cstdio>
@@ -6,7 +7,9 @@
 namespace de {
 
 bool Engine::init() {
-    return init(EngineConfig{});
+    EngineConfig cfg;
+    cfg.demo_preset = 0;   // DEngine.exe starts on first preset (LaneClash).
+    return init(cfg);
 }
 
 bool Engine::init(const EngineConfig& cfg) {
@@ -22,6 +25,7 @@ bool Engine::init(const EngineConfig& cfg) {
     overlay_data_ = {};
     overlay_count_ = 0;
     debug_ = {};
+    current_preset_ = -1;
 
     WindowDesc desc;
     desc.title = "D-Engine 2.0";
@@ -37,11 +41,19 @@ bool Engine::init(const EngineConfig& cfg) {
         return false;
     }
 
-    switch (config_.start_scene) {
-    case StartScene::Battlefield: sim_.bootstrap_battlefield({}); break;
-    case StartScene::Basic:       sim_.bootstrap();               break;
-    case StartScene::Crowd:       // fall-through
-    default:                      sim_.bootstrap_crowd();         break;
+    if (config_.demo_preset >= 0 && config_.demo_preset < k_demo_preset_count) {
+        current_preset_ = config_.demo_preset;
+        const auto& p = k_demo_presets[current_preset_];
+        apply_demo_preset(sim_, p);
+        world_debug_config_ = p.world_debug;
+        debug_.manual_hw = p.camera_hw;
+    } else {
+        switch (config_.start_scene) {
+        case StartScene::Battlefield: sim_.bootstrap_battlefield({}); break;
+        case StartScene::Basic:       sim_.bootstrap();               break;
+        case StartScene::Crowd:       // fall-through
+        default:                      sim_.bootstrap_crowd();         break;
+        }
     }
 
     generate_world_debug(world_debug_config_, world_debug_data_);
@@ -147,6 +159,15 @@ const FixedStep& Engine::fixed_step() const {
     return fixed_step_;
 }
 
+int8_t Engine::current_preset() const {
+    return current_preset_;
+}
+
+const char* Engine::current_scene_label() const {
+    const char* pn = preset_name(current_preset_);
+    return pn ? pn : scene_name(config_.start_scene);
+}
+
 // -- Debug controls -------------------------------------------------
 
 void Engine::process_debug_input() {
@@ -159,9 +180,10 @@ void Engine::process_debug_input() {
         case 0x20: action.toggle_pause      = true; break; // VK_SPACE
         case 'N':  action.single_step       = true; break;
         case 'R':  action.reset_scene       = true; break;
-        case '1':  action.switch_scene      = 0;    break; // Basic
-        case '2':  action.switch_scene      = 1;    break; // Crowd
-        case '3':  action.switch_scene      = 2;    break; // Battlefield
+        case '1':  action.switch_preset     = 0;    break; // LaneClash
+        case '2':  action.switch_preset     = 1;    break; // DenseMelee
+        case '3':  action.switch_preset     = 2;    break; // WallGap
+        case '4':  action.switch_preset     = 3;    break; // SparseApproach
         case 'F':  action.toggle_auto_frame = true;  break;
         default: break;
         }
@@ -189,18 +211,35 @@ void Engine::apply_debug_actions() {
     // Scene reset.
     if (debug_.reset_requested) {
         sim_.shutdown();
-        switch (config_.start_scene) {
-        case StartScene::Battlefield: sim_.bootstrap_battlefield({}); break;
-        case StartScene::Basic:       sim_.bootstrap();               break;
-        case StartScene::Crowd:
-        default:                      sim_.bootstrap_crowd();         break;
+        if (current_preset_ >= 0 && current_preset_ < k_demo_preset_count) {
+            apply_demo_preset(sim_, k_demo_presets[current_preset_]);
+        } else {
+            switch (config_.start_scene) {
+            case StartScene::Battlefield: sim_.bootstrap_battlefield({}); break;
+            case StartScene::Basic:       sim_.bootstrap();               break;
+            case StartScene::Crowd:
+            default:                      sim_.bootstrap_crowd();         break;
+            }
         }
         frame_info_ = {};
         fixed_step_.reset();
     }
 
-    // Scene switch.
-    if (debug_.scene_switch >= 0) {
+    // Preset switch (keyboard path, takes priority over scene switch).
+    if (debug_.preset_switch >= 0 && debug_.preset_switch < k_demo_preset_count) {
+        current_preset_ = debug_.preset_switch;
+        const auto& p = k_demo_presets[current_preset_];
+        sim_.shutdown();
+        apply_demo_preset(sim_, p);
+        world_debug_config_ = p.world_debug;
+        generate_world_debug(world_debug_config_, world_debug_data_);
+        debug_.manual_hw = p.camera_hw;
+        frame_info_ = {};
+        fixed_step_.reset();
+    }
+    // Scene switch (test/legacy path).
+    else if (debug_.scene_switch >= 0) {
+        current_preset_ = -1;
         auto scene = static_cast<StartScene>(debug_.scene_switch);
         config_.start_scene = scene;
         sim_.shutdown();
@@ -219,7 +258,7 @@ void Engine::update_window_title() {
     char buf[256];
     std::snprintf(buf, sizeof(buf),
         "D-Engine 2.0 | %s | %s | tick %llu | agents %u | inst %u",
-        scene_name(config_.start_scene),
+        current_scene_label(),
         debug_.paused ? "PAUSED" : "RUNNING",
         static_cast<unsigned long long>(frame_info_.sim_tick_index),
         render_stats_.agent_count,
@@ -322,7 +361,7 @@ void Engine::render() {
     // Drawn/dropped come from RenderFrame (extraction cap), not from
     // render_stats_ which would lag by one frame.
     extract_debug_overlay(
-        scene_name(config_.start_scene),
+        current_scene_label(),
         debug_.paused,
         frame_info_.sim_tick_index,
         render_frame_.agent_count,

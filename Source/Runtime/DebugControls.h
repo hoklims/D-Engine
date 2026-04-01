@@ -12,7 +12,8 @@ struct DebugAction {
     bool toggle_pause   = false;
     bool single_step    = false;
     bool reset_scene    = false;
-    int8_t switch_scene = -1;  // -1 = none, 0 = Basic, 1 = Crowd, 2 = Battlefield
+    int8_t switch_scene  = -1;  // -1 = none, 0 = Basic, 1 = Crowd, 2 = Battlefield
+    int8_t switch_preset = -1;  // -1 = none, 0+ = demo preset index
 
     // Camera.
     bool  toggle_auto_frame = false;
@@ -28,6 +29,7 @@ struct DebugControls {
     bool    step_requested  = false;  // consumed each frame
     bool    reset_requested = false;
     int8_t  scene_switch    = -1;     // pending scene index, -1 = none
+    int8_t  preset_switch   = -1;     // pending preset index, -1 = none
 
     // Camera.
     bool    auto_frame      = true;

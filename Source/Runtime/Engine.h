@@ -36,6 +36,8 @@ struct Engine {
     const DebugControls& debug_controls() const;
     DebugControls& debug_controls_mut();
     const FixedStep& fixed_step() const;
+    int8_t current_preset() const;
+    const char* current_scene_label() const;
 
 private:
     EngineConfig config_;
@@ -59,6 +61,7 @@ private:
     OverlayInstance overlay_instances_[k_max_overlay_instances] = {};
     uint32_t overlay_count_ = 0;
     DebugControls debug_;
+    int8_t current_preset_ = -1;
 
     void begin_frame();
     void tick_fixed_steps();
