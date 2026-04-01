@@ -132,6 +132,46 @@ static void test_renderer_disabled() {
 }
 
 // =================================================================
+//  Double shutdown -- shutdown() must be idempotent
+// =================================================================
+
+static void test_double_shutdown() {
+    de::EngineConfig cfg;
+    cfg.start_scene     = de::StartScene::Crowd;
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "double shutdown: init ok");
+
+    engine.step_one_frame();
+    engine.shutdown();
+    engine.shutdown();   // must not crash
+
+    check(true, "double shutdown: survived");
+}
+
+// =================================================================
+//  Sim state accessible after init
+// =================================================================
+
+static void test_sim_state_after_init() {
+    de::EngineConfig cfg;
+    cfg.start_scene     = de::StartScene::Crowd;
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "sim state: init ok");
+
+    auto snap0 = engine.sim_state().snapshot();
+    check(snap0.tick_count == 0,
+          "sim state: tick_count == 0 before step");
+    check(snap0.entity_count > 0,
+          "sim state: entities present after bootstrap");
+
+    engine.shutdown();
+}
+
+// =================================================================
 
 int main() {
     test_crowd_headless();
@@ -139,6 +179,8 @@ int main() {
     test_battlefield_headless();
     test_multi_frame();
     test_renderer_disabled();
+    test_double_shutdown();
+    test_sim_state_after_init();
 
     std::printf("\nEngineRuntimeTest: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail;

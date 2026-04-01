@@ -9,6 +9,10 @@
 
 namespace de {
 
+Renderer::~Renderer() {
+    shutdown();
+}
+
 // -- Inline HLSL --------------------------------------------------------
 
 static const char k_shader_src[] = R"(

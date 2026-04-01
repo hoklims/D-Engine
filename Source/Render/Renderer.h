@@ -24,6 +24,12 @@ struct RenderFrame;
 // Minimal DX12 renderer -- clears screen and draws crowd as colored quads.
 // Synchronous (CPU waits for GPU each frame). No depth buffer, no MSAA.
 struct Renderer {
+    Renderer() = default;
+    ~Renderer();
+
+    Renderer(const Renderer&) = delete;
+    Renderer& operator=(const Renderer&) = delete;
+
     bool init(HWND hwnd, int32_t width, int32_t height);
     void render(const RenderFrame& frame);
     void shutdown();
