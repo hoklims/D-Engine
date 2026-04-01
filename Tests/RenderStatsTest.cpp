@@ -216,6 +216,41 @@ static void test_reinit_crowd_to_crowd() {
 }
 
 // =================================================================
+//  Failed init: stats clean even when init() returns false
+// =================================================================
+
+static void test_failed_init_stats_clean() {
+    de::EngineConfig cfg;
+    cfg.start_scene     = de::StartScene::Crowd;
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "fail-init: first init ok");
+
+    // Populate stats with a real frame.
+    engine.step_one_frame();
+    check(engine.render_stats().agent_count > 0,
+          "fail-init: stats populated");
+
+    engine.shutdown();
+
+    // Now attempt init with invalid config (sim_rate_hz = 0 -> FixedStep
+    // rejects it). init() must return false AND stats must be clean.
+    de::EngineConfig bad_cfg;
+    bad_cfg.sim_rate_hz          = 0.0;
+    bad_cfg.enable_renderer      = false;
+    check(!engine.init(bad_cfg), "fail-init: bad config rejected");
+
+    const auto& st = engine.render_stats();
+    check(st.agent_count == 0,     "fail-init: agent_count == 0");
+    check(st.extracted_count == 0, "fail-init: extracted_count == 0");
+    check(st.instance_count == 0,  "fail-init: instance_count == 0");
+    check(st.dropped_count == 0,   "fail-init: dropped_count == 0");
+    check(st.draw_call_count == 0, "fail-init: draw_call_count == 0");
+    check(!st.frame_skipped,       "fail-init: frame_skipped == false");
+}
+
+// =================================================================
 
 int main() {
     test_headless_stats_published();
@@ -225,6 +260,7 @@ int main() {
     test_stats_match_render_frame();
     test_reinit_stats_fresh();
     test_reinit_crowd_to_crowd();
+    test_failed_init_stats_clean();
 
     std::printf("\nRenderStatsTest: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail;

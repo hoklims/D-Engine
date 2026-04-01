@@ -10,6 +10,14 @@ bool Engine::init() {
 bool Engine::init(const EngineConfig& cfg) {
     config_ = cfg;
 
+    // Reset all public state up front so that no stale data survives
+    // even if init() fails early and the caller inspects accessors.
+    frame_info_ = {};
+    telemetry_ = {};
+    wip_telemetry_ = {};
+    render_frame_ = {};
+    render_stats_ = {};
+
     WindowDesc desc;
     desc.title = "D-Engine 2.0";
     desc.width = 1280;
@@ -23,12 +31,6 @@ bool Engine::init(const EngineConfig& cfg) {
         window_.destroy();
         return false;
     }
-
-    frame_info_ = {};
-    telemetry_ = {};
-    wip_telemetry_ = {};
-    render_frame_ = {};
-    render_stats_ = {};
 
     switch (config_.start_scene) {
     case StartScene::Battlefield: sim_.bootstrap_battlefield({}); break;
