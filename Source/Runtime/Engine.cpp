@@ -19,6 +19,8 @@ bool Engine::init(const EngineConfig& cfg) {
     wip_telemetry_ = {};
     render_frame_ = {};
     render_stats_ = {};
+    overlay_data_ = {};
+    overlay_count_ = 0;
     debug_ = {};
 
     WindowDesc desc;
@@ -100,6 +102,8 @@ void Engine::shutdown() {
     sim_.shutdown();
     window_.destroy();
     render_stats_ = {};
+    overlay_data_ = {};
+    overlay_count_ = 0;
     debug_ = {};
 }
 

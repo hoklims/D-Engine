@@ -395,6 +395,87 @@ static void test_draw_call_invariant_multiframe_headless() {
 }
 
 // =================================================================
+//  Overlay lifecycle: fresh after init, clean after shutdown/fail
+// =================================================================
+
+static void test_overlay_fresh_after_init() {
+    de::EngineConfig cfg;
+    cfg.start_scene     = de::StartScene::Crowd;
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "ov-fresh: init ok");
+
+    const auto& ov = engine.debug_overlay();
+    check(ov.line_count == 0, "ov-fresh: line_count == 0 before step");
+
+    engine.shutdown();
+}
+
+static void test_overlay_clean_after_shutdown() {
+    de::EngineConfig cfg;
+    cfg.start_scene     = de::StartScene::Crowd;
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "ov-shut: init ok");
+
+    engine.step_one_frame();
+    check(engine.debug_overlay().line_count > 0,
+          "ov-shut: populated after step");
+
+    engine.shutdown();
+    check(engine.debug_overlay().line_count == 0,
+          "ov-shut: line_count == 0 after shutdown");
+}
+
+static void test_overlay_clean_after_failed_init() {
+    de::EngineConfig cfg;
+    cfg.start_scene     = de::StartScene::Crowd;
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "ov-fail: first init ok");
+
+    engine.step_one_frame();
+    check(engine.debug_overlay().line_count > 0,
+          "ov-fail: populated after step");
+
+    engine.shutdown();
+
+    // Bad config: sim_rate_hz = 0 -> FixedStep rejects.
+    de::EngineConfig bad;
+    bad.sim_rate_hz     = 0.0;
+    bad.enable_renderer = false;
+    check(!engine.init(bad), "ov-fail: bad config rejected");
+
+    check(engine.debug_overlay().line_count == 0,
+          "ov-fail: clean after failed init");
+}
+
+static void test_overlay_clean_after_reinit() {
+    de::EngineConfig cfg;
+    cfg.start_scene     = de::StartScene::Crowd;
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "ov-reinit: first init ok");
+
+    engine.step_one_frame();
+    check(engine.debug_overlay().line_count > 0,
+          "ov-reinit: populated after step");
+
+    engine.shutdown();
+
+    cfg.start_scene = de::StartScene::Basic;
+    check(engine.init(cfg), "ov-reinit: second init ok");
+    check(engine.debug_overlay().line_count == 0,
+          "ov-reinit: clean after reinit before step");
+
+    engine.shutdown();
+}
+
+// =================================================================
 
 int main() {
     test_headless_stats_published();
@@ -410,6 +491,10 @@ int main() {
     test_overlay_current_frame_coherence();
     test_overlay_frame_skipped_current();
     test_draw_call_invariant_multiframe_headless();
+    test_overlay_fresh_after_init();
+    test_overlay_clean_after_shutdown();
+    test_overlay_clean_after_failed_init();
+    test_overlay_clean_after_reinit();
 
     std::printf("\nRenderStatsTest: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail;
