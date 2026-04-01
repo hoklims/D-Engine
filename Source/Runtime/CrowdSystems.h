@@ -91,9 +91,9 @@ uint32_t apply_crowd_steering(WorldView& view, float dt, CommandBuffer& cmds);
 // independent of iteration order.
 //
 // Navigation safety: when battlefield grids are installed, a dodge
-// that would push the agent into a BLOCKED cell (probed at pos +
-// new_vel * dt) is rejected entirely.  Avoidance never causes wall
-// penetration.
+// is rejected if the movement segment pos -> pos + new_vel * dt
+// would cross any BLOCKED cell (DDA grid walk).  This prevents
+// both landing in a wall and jumping over a thin wall at large dt.
 uint32_t apply_local_avoidance(WorldView& view, float dt, CommandBuffer& cmds);
 
 // Melee broadphase: for each crowd agent, query the spatial grid for

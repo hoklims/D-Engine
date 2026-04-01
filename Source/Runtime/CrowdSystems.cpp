@@ -364,9 +364,9 @@ uint32_t apply_crowd_steering(WorldView& view, float /*dt*/,
 //
 // Navigation contract:
 //   When battlefield grids are installed, the dodge is rejected if the
-//   resulting velocity would push the agent into a BLOCKED cell within
-//   the current tick (probed at pos + new_vel * dt).  This guarantees
-//   avoidance never causes wall penetration.
+//   movement segment pos -> pos + new_vel * dt would CROSS any blocked
+//   cell (DDA grid walk).  This prevents both landing in a blocked cell
+//   and jumping over a thin wall at large dt.
 //
 // Runs after ApplyCrowdSteer and before ApplySeparation.  LOD gated.
 
@@ -471,18 +471,17 @@ uint32_t apply_local_avoidance(WorldView& view, float dt,
                 new_vy *= scale;
             }
 
-            // Navigation safety: reject dodge if it would push the
-            // agent into a blocked cell by end of this tick.
+            // Navigation safety: reject dodge if the movement segment
+            // would cross any blocked cell (DDA grid walk, not just
+            // final-cell check).  This prevents wall-jump at large dt.
             if (s_nav_grids && team.id < s_nav_grid_count) {
                 const BattlefieldGrid* grid = s_nav_grids[team.id];
                 if (grid) {
-                    float probe_x = pos.x + new_vx * dt;
-                    float probe_y = pos.y + new_vy * dt;
-                    int pcx = 0;
-                    int pcy = 0;
-                    grid->world_to_cell(probe_x, probe_y, pcx, pcy);
-                    if (grid->is_blocked(pcx, pcy)) {
-                        // Dodge would violate nav grid -- reject entirely.
+                    float end_x = pos.x + new_vx * dt;
+                    float end_y = pos.y + new_vy * dt;
+                    if (grid->segment_crosses_blocked(
+                            pos.x, pos.y, end_x, end_y)) {
+                        // Dodge would cross a blocked cell -- reject.
                         return;
                     }
                 }

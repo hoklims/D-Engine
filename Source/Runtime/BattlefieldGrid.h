@@ -171,6 +171,75 @@ struct BattlefieldGrid {
         return cost_[idx(cx, cy)];
     }
 
+    // Test whether the world-space segment (ax,ay)->(bx,by) crosses any
+    // BLOCKED cell.  Uses a simple DDA grid walk: advance along whichever
+    // axis hits the next cell boundary first.  Returns true on the first
+    // blocked cell encountered (including out-of-bounds).
+    //
+    // Deterministic, branchless on the hot path, no allocation.
+    // Cost is proportional to the number of cells traversed.
+    bool segment_crosses_blocked(float ax, float ay,
+                                 float bx, float by) const {
+        int cx, cy;
+        world_to_cell(ax, ay, cx, cy);
+
+        int ex, ey;
+        world_to_cell(bx, by, ex, ey);
+
+        // Check start cell.
+        if (is_blocked(cx, cy)) return true;
+
+        // Direction in cell space.
+        float dx = bx - ax;
+        float dy = by - ay;
+
+        int step_x = (dx > 0.0f) ? 1 : (dx < 0.0f) ? -1 : 0;
+        int step_y = (dy > 0.0f) ? 1 : (dy < 0.0f) ? -1 : 0;
+
+        // t_max: parametric t at which the ray crosses the next cell
+        // boundary on each axis.  t_delta: parametric step per cell.
+        // Use large sentinel when movement along an axis is zero.
+        constexpr float k_big = 1e30f;
+
+        float t_max_x = k_big;
+        float t_delta_x = k_big;
+        if (step_x != 0) {
+            // Next cell boundary in world space.
+            float edge_x = origin_x_ +
+                static_cast<float>(step_x > 0 ? cx + 1 : cx) * cell_size_;
+            t_max_x   = (edge_x - ax) / dx;
+            t_delta_x = cell_size_ / (dx > 0.0f ? dx : -dx);
+        }
+
+        float t_max_y = k_big;
+        float t_delta_y = k_big;
+        if (step_y != 0) {
+            float edge_y = origin_y_ +
+                static_cast<float>(step_y > 0 ? cy + 1 : cy) * cell_size_;
+            t_max_y   = (edge_y - ay) / dy;
+            t_delta_y = cell_size_ / (dy > 0.0f ? dy : -dy);
+        }
+
+        // Walk until we reach the end cell or leave the grid.
+        // Safety cap: never walk more cells than the grid diagonal.
+        int max_steps = width_ + height_;
+        for (int i = 0; i < max_steps; ++i) {
+            if (cx == ex && cy == ey) break;
+
+            if (t_max_x < t_max_y) {
+                cx += step_x;
+                t_max_x += t_delta_x;
+            } else {
+                cy += step_y;
+                t_max_y += t_delta_y;
+            }
+
+            if (is_blocked(cx, cy)) return true;
+        }
+
+        return false;
+    }
+
     // Convert world position to cell coordinates.
     void world_to_cell(float wx, float wy, int& cx, int& cy) const {
         cx = static_cast<int>(std::floor((wx - origin_x_) / cell_size_));
