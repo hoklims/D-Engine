@@ -41,7 +41,7 @@ cmake --build Build --config Debug --target EcsTest && ./Build/Tests/Debug/EcsTe
 ./Build/Source/Debug/DEngine.exe
 ```
 
-Tests disponibles : `FixedStepTest`, `TimelineTest`, `TelemetryTest`, `EcsTest`, `RuntimeEcsTest`, `CrowdTest`, `NavTest`, `LodTest`, `MeleeTest`, `SimHashTest`.
+Tests disponibles : `FixedStepTest`, `TimelineTest`, `TelemetryTest`, `EcsTest`, `RuntimeEcsTest`, `CrowdTest`, `NavTest`, `LodTest`, `MeleeTest`, `SimHashTest`, `RenderFrameTest`.
 
 ## Conventions code
 - `/W4 /WX /permissive-` -- zero warnings obligatoire
@@ -117,6 +117,29 @@ ECS archetypal avec stockage SoA (Structure of Arrays). Aucune dependance Win32.
 - Core : `Position`, `Velocity`, `Acceleration`
 - Crowd : `CrowdAgent` (tag), `Team`, `MoveSpeed`, `Target`, `DesiredDirection`, `Health`, `AttackRange`, `AttackDamage`, `AttackCooldown`, `BattleGoal`, `EngageRadius`, `Separation`, `BehaviorLod`
 - Config : `BehaviorLodConfig` (seuils LOD + battle center)
+
+### Render (Source/Render/)
+
+**Frame extraction** :
+- `RenderFrame` : snapshot lecture seule de la foule (positions, equipe, LOD, HP). Extrait depuis le World apres le dernier tick du frame.
+- `CrowdRenderItem` : donnees par agent (x, y, team_id, lod_tier, health_pct).
+- `extract_render_frame()` : itere les CrowdAgent du World, remplit RenderFrame. Cap a k_max_render_agents (4096). Deterministe (meme World = meme frame).
+
+**Renderer DX12 minimal** :
+- Device DX12 (feature level 11_0, fallback WARP).
+- Swap chain double-buffered, flip-discard.
+- Command queue direct, allocator unique, synchrone (CPU wait GPU chaque frame).
+- Root signature : 16 root constants (matrice ortho 4x4).
+- PSO : triangle list, VS/PS compiles a l'init via D3DCompile (HLSL inline).
+- Vertex buffer upload heap, map persistant. 6 vertices/agent (quad 2 triangles).
+- Couleur par equipe (rouge, bleu, vert, jaune), modulee par HP.
+- Projection orthographique centree (50 unites demi-largeur).
+- Pas de depth, pas de MSAA, pas de textures, pas d'instancing avance.
+
+**Integration Engine** :
+- `update_presentation()` extrait la RenderFrame.
+- `render()` soumet au Renderer DX12.
+- Si le Renderer echoue a l'init, le moteur continue en mode headless.
 
 ### Platform (Source/Platform/)
 

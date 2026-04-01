@@ -22,10 +22,14 @@ add_executable(DEngine WIN32
     Runtime/SimState.cpp
     Platform/Window.h
     Platform/Window.cpp
+    Render/RenderFrame.h
+    Render/RenderFrame.cpp
+    Render/Renderer.h
+    Render/Renderer.cpp
 )
 
 target_include_directories(DEngine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(DEngine PRIVATE DEcs)
+target_link_libraries(DEngine PRIVATE DEcs d3d12 dxgi d3dcompiler)
 
 # --- ECS static library (standalone, no Win32 dependency) ---
 add_library(DEcs STATIC

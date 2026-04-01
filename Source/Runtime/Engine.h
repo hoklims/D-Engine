@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Platform/Window.h"
+#include "Render/RenderFrame.h"
 #include "Runtime/Clock.h"
 #include "Runtime/EngineConfig.h"
 #include "Runtime/FixedStep.h"
@@ -11,6 +12,8 @@
 
 namespace de {
 
+struct Renderer;
+
 struct Engine {
     bool init();
     bool init(const EngineConfig& cfg);
@@ -20,6 +23,7 @@ struct Engine {
     const FrameInfo& frame_info() const;
     const FrameTelemetry& frame_telemetry() const;
     const SimState& sim_state() const;
+    const RenderFrame& render_frame() const;
 
 private:
     EngineConfig config_;
@@ -31,6 +35,10 @@ private:
     FrameTelemetry wip_telemetry_;    // work-in-progress buffer (current frame)
     SimState sim_;
     bool running_ = false;
+
+    Renderer* renderer_        = nullptr;
+    bool      renderer_active_ = false;
+    RenderFrame render_frame_;
 
     void begin_frame();
     void tick_fixed_steps();

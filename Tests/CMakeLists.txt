@@ -96,3 +96,13 @@ add_executable(BudgetResponseTest
 target_link_libraries(BudgetResponseTest PRIVATE DEcs)
 target_include_directories(BudgetResponseTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
 add_test(NAME BudgetResponseTest COMMAND BudgetResponseTest)
+
+add_executable(RenderFrameTest
+    RenderFrameTest.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/RenderFrame.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/SimState.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/CrowdSystems.cpp
+)
+target_link_libraries(RenderFrameTest PRIVATE DEcs)
+target_include_directories(RenderFrameTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
+add_test(NAME RenderFrameTest COMMAND RenderFrameTest)

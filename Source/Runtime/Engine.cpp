@@ -1,4 +1,5 @@
 #include "Runtime/Engine.h"
+#include "Render/Renderer.h"
 
 namespace de {
 
@@ -26,7 +27,16 @@ bool Engine::init(const EngineConfig& cfg) {
     frame_info_ = {};
     telemetry_ = {};
     wip_telemetry_ = {};
+    render_frame_ = {};
     sim_.bootstrap();
+
+    renderer_ = new Renderer();
+    renderer_active_ = renderer_->init(window_.handle(), window_.width(), window_.height());
+    if (!renderer_active_) {
+        delete renderer_;
+        renderer_ = nullptr;
+    }
+
     running_ = true;
     return true;
 }
@@ -51,6 +61,12 @@ void Engine::run() {
 
 void Engine::shutdown() {
     running_ = false;
+    if (renderer_) {
+        renderer_->shutdown();
+        delete renderer_;
+        renderer_ = nullptr;
+        renderer_active_ = false;
+    }
     sim_.shutdown();
     window_.destroy();
 }
@@ -65,6 +81,10 @@ const FrameTelemetry& Engine::frame_telemetry() const {
 
 const SimState& Engine::sim_state() const {
     return sim_;
+}
+
+const RenderFrame& Engine::render_frame() const {
+    return render_frame_;
 }
 
 void Engine::begin_frame() {
@@ -110,15 +130,18 @@ void Engine::update_fixed(double step_dt) {
 }
 
 void Engine::update_presentation(double alpha) {
-    // Future: interpolation for rendering
-    // Future: animation blending
     (void)alpha;
+    if (renderer_active_) {
+        extract_render_frame(sim_.world, frame_info_.sim_tick_index,
+                             frame_info_.frame_index, render_frame_);
+    }
 }
 
 void Engine::render() {
     ScopeTimer t(&wip_telemetry_.render_s);
-    // Future: DX12 frame submission
-    // Future: crowd rendering pipeline
+    if (renderer_active_) {
+        renderer_->render(render_frame_);
+    }
 }
 
 void Engine::end_frame() {
