@@ -195,6 +195,15 @@ target_link_libraries(DemoPresetTest PRIVATE DEcs d3d12 dxgi d3dcompiler)
 target_include_directories(DemoPresetTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
 add_test(NAME DemoPresetTest COMMAND DemoPresetTest)
 
+add_executable(AvoidanceTest
+    AvoidanceTest.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/SimState.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/CrowdSystems.cpp
+)
+target_link_libraries(AvoidanceTest PRIVATE DEcs)
+target_include_directories(AvoidanceTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
+add_test(NAME AvoidanceTest COMMAND AvoidanceTest)
+
 add_executable(EngineRuntimeTest
     EngineRuntimeTest.cpp
     ${CMAKE_SOURCE_DIR}/Source/Runtime/Engine.cpp

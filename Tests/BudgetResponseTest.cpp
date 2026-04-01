@@ -353,9 +353,9 @@ static void test_combat_core_untouched() {
     for (int i = 0; i < 4; ++i) sim.tick(1.0 / 60.0);
 
     auto snap = sim.snapshot();
-    check(snap.systems[7].entities_processed > 0,
+    check(snap.systems[8].entities_processed > 0,
           "combat_core: AttackTargets processes agents under pressure");
-    check(snap.systems[9].entities_processed > 0,
+    check(snap.systems[10].entities_processed > 0,
           "combat_core: RemoveDead processes agents under pressure");
 }
 

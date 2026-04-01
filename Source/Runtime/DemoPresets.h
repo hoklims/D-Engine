@@ -49,11 +49,12 @@ static constexpr int k_wall_gap_obstacle_count =
 // -- Preset table ------------------------------------------------------------
 
 static constexpr DemoPreset k_demo_presets[] = {
-    // 0: LaneClash -- classic head-on two-army charge.
+    // 0: LaneClash -- classic head-on two-army charge with avoidance.
     {
         "LaneClash",
         StartScene::Crowd,
-        /* crowd */ { 40, 30.0f, 1.5f, 3.5f, 100.0f, 2.0f, 10.0f, 1.0f, 0.8f, 5.0f, 20.0f },
+        /* crowd */ { 40, 30.0f, 1.5f, 3.5f, 100.0f, 2.0f, 10.0f, 1.0f, 0.8f, 5.0f, 20.0f,
+                      /* avoidance */ 3.5f, 0.9f, 3.0f },
         /* bf */ 60, 40, 1.0f, -30.0f, -20.0f, nullptr, 0,
         /* world_debug */ { true, true, 60.0f, 10.0f },
         /* camera_hw */ 45.0f,
@@ -62,7 +63,8 @@ static constexpr DemoPreset k_demo_presets[] = {
     {
         "DenseMelee",
         StartScene::Crowd,
-        /* crowd */ { 60, 10.0f, 0.8f, 2.0f, 80.0f, 1.5f, 8.0f, 0.5f, 0.6f, 6.0f, 8.0f },
+        /* crowd */ { 60, 10.0f, 0.8f, 2.0f, 80.0f, 1.5f, 8.0f, 0.5f, 0.6f, 6.0f, 8.0f,
+                      /* avoidance */ 2.0f, 0.5f, 2.0f },
         /* bf */ 60, 40, 1.0f, -30.0f, -20.0f, nullptr, 0,
         /* world_debug */ { true, true, 30.0f, 5.0f },
         /* camera_hw */ 25.0f,
@@ -71,7 +73,8 @@ static constexpr DemoPreset k_demo_presets[] = {
     {
         "WallGap",
         StartScene::Battlefield,
-        /* crowd */ { 30, 25.0f, 1.5f, 3.0f, 100.0f, 2.0f, 10.0f, 1.0f, 0.8f, 5.0f, 15.0f },
+        /* crowd */ { 30, 25.0f, 1.5f, 3.0f, 100.0f, 2.0f, 10.0f, 1.0f, 0.8f, 5.0f, 15.0f,
+                      /* avoidance */ 3.0f, 0.8f, 2.5f },
         /* bf */ 60, 40, 1.0f, -30.0f, -20.0f,
                  k_wall_gap_obstacles, k_wall_gap_obstacle_count,
         /* world_debug */ { true, true, 40.0f, 10.0f },
@@ -81,7 +84,8 @@ static constexpr DemoPreset k_demo_presets[] = {
     {
         "SparseApproach",
         StartScene::Crowd,
-        /* crowd */ { 12, 50.0f, 3.0f, 4.0f, 150.0f, 2.5f, 12.0f, 1.2f, 1.0f, 4.0f, 25.0f },
+        /* crowd */ { 12, 50.0f, 3.0f, 4.0f, 150.0f, 2.5f, 12.0f, 1.2f, 1.0f, 4.0f, 25.0f,
+                      /* avoidance */ 3.0f, 0.8f, 2.5f },
         /* bf */ 60, 40, 1.0f, -30.0f, -20.0f, nullptr, 0,
         /* world_debug */ { true, true, 80.0f, 20.0f },
         /* camera_hw */ 65.0f,

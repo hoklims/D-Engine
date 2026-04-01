@@ -46,6 +46,8 @@ void SimState::bootstrap() {
     deaths_this_tick_   = 0;
     targeting_candidates_scanned_ = 0;
     separation_pairs_this_tick_  = 0;
+    avoidance_neighbors_this_tick_ = 0;
+    avoidance_adjusted_this_tick_  = 0;
     agents_engaged_              = 0;
     nav_queries_this_tick_       = 0;
     nav_failures_this_tick_      = 0;
@@ -100,6 +102,8 @@ void SimState::bootstrap_crowd(const CrowdConfig& cfg) {
     deaths_this_tick_   = 0;
     targeting_candidates_scanned_ = 0;
     separation_pairs_this_tick_  = 0;
+    avoidance_neighbors_this_tick_ = 0;
+    avoidance_adjusted_this_tick_  = 0;
     agents_engaged_              = 0;
     nav_queries_this_tick_       = 0;
     nav_failures_this_tick_      = 0;
@@ -153,6 +157,7 @@ void SimState::bootstrap_crowd(const CrowdConfig& cfg) {
             world.set(e, AttackDamage{cfg.attack_damage});
             world.set(e, AttackCooldown{0.0f, cfg.attack_interval});
             world.set(e, Separation{cfg.separation_radius, cfg.separation_strength});
+            world.set(e, LocalAvoidance{cfg.avoidance_radius, cfg.avoidance_horizon, cfg.avoidance_strength});
             // Goal: advance toward the opposing team's spawn.
             float goal_x = (team == 0) ? team1_x : team0_x;
             world.set(e, BattleGoal{goal_x, 0.0f});
@@ -274,6 +279,8 @@ void SimState::tick(double step_dt) {
     deaths_this_tick_               = crowd_deaths_queued_this_tick();
     targeting_candidates_scanned_   = crowd_candidates_scanned_this_tick();
     separation_pairs_this_tick_     = crowd_separation_pairs_this_tick();
+    avoidance_neighbors_this_tick_  = avoidance_neighbors_this_tick();
+    avoidance_adjusted_this_tick_   = avoidance_adjusted_this_tick();
     agents_engaged_                 = crowd_agents_engaged_this_tick();
     melee_bp_checks_                = melee_broadphase_checks_this_tick();
     melee_pairs_this_tick_          = melee_pairs_this_tick();
@@ -312,6 +319,8 @@ void SimState::shutdown() {
     deaths_this_tick_   = 0;
     targeting_candidates_scanned_ = 0;
     separation_pairs_this_tick_  = 0;
+    avoidance_neighbors_this_tick_ = 0;
+    avoidance_adjusted_this_tick_  = 0;
     agents_engaged_              = 0;
     nav_queries_this_tick_       = 0;
     nav_failures_this_tick_      = 0;
@@ -360,6 +369,8 @@ SimSnapshot SimState::snapshot() const {
     snap.deaths_this_tick               = deaths_this_tick_;
     snap.targeting_candidates_scanned   = targeting_candidates_scanned_;
     snap.separation_pairs_this_tick     = separation_pairs_this_tick_;
+    snap.avoidance_neighbors_this_tick  = avoidance_neighbors_this_tick_;
+    snap.avoidance_adjusted_this_tick   = avoidance_adjusted_this_tick_;
     snap.agents_engaged                 = agents_engaged_;
     snap.nav_queries_this_tick          = nav_queries_this_tick_;
     snap.nav_failures_this_tick         = nav_failures_this_tick_;
@@ -401,6 +412,7 @@ void SimState::register_crowd_systems() {
     add_system("ComputeBattleGoal", compute_battle_goal);
     add_system("ComputeDesiredMove", compute_desired_movement);
     add_system("ApplyCrowdSteer",    apply_crowd_steering);
+    add_system("LocalAvoidance",    apply_local_avoidance);
     add_system("ApplySeparation",   apply_separation);
     add_system("MeleeBroadphase",   gather_melee_candidates);
     add_system("AttackTargets",      attack_targets);

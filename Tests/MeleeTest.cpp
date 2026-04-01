@@ -360,8 +360,8 @@ static void test_existing_crowd_no_regression() {
     auto snap = sim.snapshot();
     check(snap.crowd_agent_count == 20,
           "regression: all 20 agents alive after 10 ticks");
-    check(snap.system_count == 12,
-          "regression: 12 systems registered (with MeleeBroadphase)");
+    check(snap.system_count == 13,
+          "regression: 13 systems registered (with MeleeBroadphase)");
 }
 
 // =================================================================

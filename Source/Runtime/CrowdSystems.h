@@ -18,9 +18,9 @@ namespace de {
 //
 // Pipeline order:
 //   SelectTargets > ClassifyLod > ComputeBattleGoal >
-//   ComputeDesiredMove > ApplyCrowdSteer > ApplySeparation >
-//   MeleeBroadphase > AttackTargets > ResolveDamage > RemoveDead >
-//   IntegrateVelocity > IntegratePosition
+//   ComputeDesiredMove > ApplyCrowdSteer > LocalAvoidance >
+//   ApplySeparation > MeleeBroadphase > AttackTargets >
+//   ResolveDamage > RemoveDead > IntegrateVelocity > IntegratePosition
 //
 // ComputeBattleGoal sets DesiredDirection toward the strategic rally
 // point.  ComputeDesiredMove overrides it with local pursuit when the
@@ -80,6 +80,13 @@ uint32_t compute_desired_movement(WorldView& view, float dt, CommandBuffer& cmds
 // Set velocity = desired_direction * move_speed (instant steering).
 uint32_t apply_crowd_steering(WorldView& view, float dt, CommandBuffer& cmds);
 
+// Anticipatory local avoidance: predict short-horizon collisions and
+// apply a lateral dodge force to avoid head-on encounters.  Uses the
+// spatial grid built by select_targets.  Runs after ApplyCrowdSteer
+// and before ApplySeparation.  Side selection is deterministic
+// (EntityId comparison).  LOD gated.
+uint32_t apply_local_avoidance(WorldView& view, float dt, CommandBuffer& cmds);
+
 // Melee broadphase: for each crowd agent, query the spatial grid for
 // enemies within AttackRange.  Builds a pair buffer (telemetry) and a
 // validation set (O(1) lookup).  attack_targets consumes the set to
@@ -111,6 +118,10 @@ uint32_t crowd_nav_queries_this_tick();
 uint32_t crowd_nav_failures_this_tick();
 uint32_t crowd_lod_tier_count(uint8_t tier);
 uint32_t crowd_lod_skipped_this_tick();
+
+// Local avoidance telemetry (this tick).
+uint32_t avoidance_neighbors_this_tick();
+uint32_t avoidance_adjusted_this_tick();
 
 // Melee broadphase telemetry (this tick).
 uint32_t melee_broadphase_checks_this_tick();

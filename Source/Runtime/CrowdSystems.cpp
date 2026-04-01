@@ -42,6 +42,10 @@ static BehaviorLodConfig s_lod_default;
 static uint64_t s_crowd_tick             = 0;
 
 // Melee broadphase telemetry.
+// Local avoidance telemetry.
+static uint32_t s_avoidance_neighbors    = 0;
+static uint32_t s_avoidance_adjusted     = 0;
+
 static uint32_t s_melee_bp_checks        = 0;
 static uint32_t s_melee_pairs_count      = 0;
 static uint32_t s_melee_attacks          = 0;
@@ -62,6 +66,9 @@ uint32_t crowd_nav_queries_this_tick()        { return s_nav_queries; }
 uint32_t crowd_nav_failures_this_tick()       { return s_nav_failures; }
 uint32_t crowd_lod_tier_count(uint8_t tier)   { return (tier < k_lod_tier_count) ? s_lod_counts[tier] : 0; }
 uint32_t crowd_lod_skipped_this_tick()        { return s_lod_skipped; }
+
+uint32_t avoidance_neighbors_this_tick()      { return s_avoidance_neighbors; }
+uint32_t avoidance_adjusted_this_tick()       { return s_avoidance_adjusted; }
 
 uint32_t melee_broadphase_checks_this_tick()  { return s_melee_bp_checks; }
 uint32_t melee_pairs_this_tick()              { return s_melee_pairs_count; }
@@ -86,6 +93,8 @@ void     reset_crowd_tick_counters() {
     s_nav_failures       = 0;
     for (auto& c : s_lod_counts) c = 0;
     s_lod_skipped        = 0;
+    s_avoidance_neighbors = 0;
+    s_avoidance_adjusted  = 0;
     s_melee_bp_checks    = 0;
     s_melee_pairs_count  = 0;
     s_melee_attacks      = 0;
@@ -324,6 +333,107 @@ uint32_t apply_crowd_steering(WorldView& view, float /*dt*/,
             ++count;
             vel.dx = dir.dx * spd.max;
             vel.dy = dir.dy * spd.max;
+        });
+    return count;
+}
+
+// -----------------------------------------------------------------------
+//  apply_local_avoidance
+// -----------------------------------------------------------------------
+// Anticipatory collision avoidance using time-to-closest-approach (TTC).
+// For each agent, scan nearby agents (within LocalAvoidance.radius).
+// If two agents are closing (relative velocity converging), compute
+// TTC.  If TTC is within the prediction horizon, apply a lateral
+// dodge force perpendicular to the approach direction.
+//
+// Side selection is deterministic: lower EntityId dodges left (perp
+// = (-dy, +dx)), higher dodges right (perp = (+dy, -dx)).  This
+// guarantees symmetric avoidance -- both agents dodge in compatible
+// directions.
+//
+// Runs after ApplyCrowdSteer (velocity set) and before ApplySeparation
+// (positional overlap repair).  LOD gated.
+
+uint32_t apply_local_avoidance(WorldView& view, float /*dt*/,
+                               CommandBuffer& /*cmds*/) {
+    s_avoidance_neighbors = 0;
+    s_avoidance_adjusted  = 0;
+    uint32_t count = 0;
+
+    view.each<CrowdAgent, Position, Velocity, LocalAvoidance, MoveSpeed, BehaviorLod>(
+        [&](EntityId self, CrowdAgent&, Position& pos,
+            Velocity& vel, LocalAvoidance& avoid, MoveSpeed& spd,
+            BehaviorLod& lod) {
+            if (lod_should_skip(lod)) { return; }
+            ++count;
+
+            float steer_x = 0.0f;
+            float steer_y = 0.0f;
+            bool  adjusted = false;
+
+            s_grid.for_each_nearby(
+                pos.x, pos.y, avoid.radius, self,
+                [&](const SpatialGrid::Entry& e, float d2) {
+                    ++s_avoidance_neighbors;
+
+                    float dist = std::sqrt(d2);
+                    if (dist < 1e-6f) return;  // exact overlap handled by separation
+
+                    // Relative position and velocity.
+                    float rel_px = e.x - pos.x;
+                    float rel_py = e.y - pos.y;
+
+                    // We need neighbor velocity.  Look it up.
+                    const auto* nv = view.get<Velocity>(e.id);
+                    if (!nv) return;
+
+                    float rel_vx = vel.dx - nv->dx;
+                    float rel_vy = vel.dy - nv->dy;
+
+                    // Closing speed along the approach axis.
+                    // Positive means converging.
+                    float closing = (rel_px * rel_vx + rel_py * rel_vy) / dist;
+                    if (closing <= 0.0f) return;  // diverging, no avoidance needed
+
+                    // Time to closest approach (simplified linear prediction).
+                    float ttc = dist / closing;
+                    if (ttc > avoid.horizon) return;  // too far in the future
+
+                    // Urgency ramps linearly from 0 (at horizon) to 1 (at contact).
+                    float urgency = 1.0f - ttc / avoid.horizon;
+
+                    // Lateral dodge direction: perpendicular to approach axis.
+                    // Deterministic side: lower EntityId goes left, higher goes right.
+                    float ax = rel_px / dist;
+                    float ay = rel_py / dist;
+                    float perp_x, perp_y;
+                    if (self.index < e.id.index) {
+                        perp_x = -ay;
+                        perp_y =  ax;
+                    } else {
+                        perp_x =  ay;
+                        perp_y = -ax;
+                    }
+
+                    steer_x += perp_x * urgency * avoid.strength;
+                    steer_y += perp_y * urgency * avoid.strength;
+                    adjusted = true;
+                });
+
+            if (adjusted) {
+                vel.dx += steer_x;
+                vel.dy += steer_y;
+
+                // Reclamp to max speed.
+                float speed2 = vel.dx * vel.dx + vel.dy * vel.dy;
+                float max2   = spd.max * spd.max;
+                if (speed2 > max2) {
+                    float scale = spd.max / std::sqrt(speed2);
+                    vel.dx *= scale;
+                    vel.dy *= scale;
+                }
+                ++s_avoidance_adjusted;
+            }
         });
     return count;
 }

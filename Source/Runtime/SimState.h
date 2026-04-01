@@ -12,7 +12,7 @@
 
 namespace de {
 
-static constexpr uint32_t k_max_sim_systems  = 16;
+static constexpr uint32_t k_max_sim_systems  = 18;
 static constexpr uint32_t k_system_name_max  = 32;
 static constexpr uint32_t k_max_teams        = 4;
 
@@ -120,6 +120,10 @@ struct SimSnapshot {
     // Separation telemetry (this tick).
     uint32_t    separation_pairs_this_tick = 0;
 
+    // Local avoidance telemetry (this tick).
+    uint32_t    avoidance_neighbors_this_tick = 0;
+    uint32_t    avoidance_adjusted_this_tick  = 0;
+
     // Battle goal telemetry (this tick).
     uint32_t    agents_engaged = 0;
 
@@ -187,6 +191,9 @@ struct CrowdConfig {
     float separation_radius   = 0.8f;
     float separation_strength = 5.0f;
     float engage_radius       = 15.0f;
+    float avoidance_radius    = 3.0f;
+    float avoidance_horizon   = 0.8f;
+    float avoidance_strength  = 2.5f;
 };
 
 // Obstacle definition for battlefield scenes.
@@ -271,6 +278,8 @@ private:
     uint32_t      deaths_this_tick_    = 0;
     uint32_t      targeting_candidates_scanned_ = 0;
     uint32_t      separation_pairs_this_tick_  = 0;
+    uint32_t      avoidance_neighbors_this_tick_ = 0;
+    uint32_t      avoidance_adjusted_this_tick_  = 0;
     uint32_t      agents_engaged_             = 0;
     uint32_t      nav_queries_this_tick_      = 0;
     uint32_t      nav_failures_this_tick_     = 0;

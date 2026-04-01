@@ -55,6 +55,16 @@ struct Separation {
     float strength = 5.0f;   // push magnitude at full overlap (units/s)
 };
 
+// Local avoidance -- anticipatory collision avoidance via TTC.
+// Runs after steering, before separation.  Predicts short-horizon
+// collisions and applies a lateral dodge force to avoid head-on
+// encounters.  Deterministic side selection via EntityId comparison.
+struct LocalAvoidance {
+    float radius  = 3.0f;   // neighbor scan radius (units)
+    float horizon = 0.8f;   // prediction horizon (seconds)
+    float strength = 2.5f;  // lateral dodge strength (units/s)
+};
+
 // Behavior LOD tier assigned each tick by the classification system.
 // Determines simulation frequency for non-critical systems.
 //

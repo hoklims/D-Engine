@@ -403,6 +403,7 @@ static void test_nav_wall_no_crossing_through_wall() {
     bcfg.crowd.health          = 10000.0f;
     bcfg.crowd.engage_radius   = 2.0f;
     bcfg.crowd.attack_range    = 1.0f;
+    bcfg.crowd.avoidance_strength = 0.0f; // wall test uses dt=1.0; disable avoidance
     bcfg.grid_width            = 60;
     bcfg.grid_height           = 40;
     bcfg.grid_cell             = 1.0f;
