@@ -397,7 +397,25 @@ void Engine::render() {
     uint32_t culled    = extracted - visible;
     uint32_t drop_cap  = render_frame_.agent_count - extracted;
 
-    // Structured HUD extraction + instance generation.
+    // Resolve resize BEFORE HUD extraction so frame_skipped is truthful.
+    bool resize_failed = false;
+    if (renderer_active_) {
+        if (!renderer_->resize(window_.width(), window_.height())) {
+            renderer_active_ = false;
+            resize_failed = true;
+        }
+    }
+
+    // HUD uses current-frame state throughout:
+    //   frame_skipped = !renderer_active_ (accounts for resize failure above)
+    //   frame_ms      = pre-render CPU sum from wip_telemetry_ (current frame)
+    //   sim_ms        = fixed_update from wip_telemetry_ (current frame)
+    bool frame_skipped = !renderer_active_;
+    double frame_ms = (wip_telemetry_.begin_frame_s
+                     + wip_telemetry_.fixed_update_s
+                     + wip_telemetry_.presentation_update_s) * 1000.0;
+    double sim_ms   = wip_telemetry_.fixed_update_s * 1000.0;
+
     extract_debug_hud(
         hud_mode_,
         current_scene_label(),
@@ -409,10 +427,9 @@ void Engine::render() {
         visible,
         culled,
         drop_cap,
-        !renderer_active_,
+        frame_skipped,
         sim_.budget_status().within_budget,
-        telemetry_.total_frame_s * 1000.0,
-        telemetry_.fixed_update_s * 1000.0,
+        frame_ms, sim_ms,
         hud_data_);
     overlay_count_ = generate_hud_instances(
         hud_data_,
@@ -429,32 +446,21 @@ void Engine::render() {
         visible,
         culled,
         drop_cap,
-        !renderer_active_,
+        frame_skipped,
         sim_.budget_status().within_budget,
         overlay_data_);
 
+    // GPU submission or stats-only paths.
     if (renderer_active_) {
-        if (!renderer_->resize(window_.width(), window_.height())) {
-            renderer_active_ = false;
-            render_stats_ = {};
-            render_stats_.agent_count     = render_frame_.agent_count;
-            render_stats_.extracted_count = extracted;
-            render_stats_.visible_count   = visible;
-            render_stats_.culled_count    = culled;
-            render_stats_.dropped_count   = render_frame_.agent_count;
-            render_stats_.frame_skipped   = true;
-            return;
-        }
-        // Submit culled work buffer (only visible agents) to the renderer.
         renderer_->render(culled_frame_, camera_, &world_debug_data_,
                          overlay_instances_, overlay_count_);
         render_stats_ = renderer_->stats();
     } else {
-        // Headless: no GPU submission.
         render_stats_ = {};
         render_stats_.agent_count    = render_frame_.agent_count;
         render_stats_.instance_count = 0;
         render_stats_.dropped_count  = render_frame_.agent_count;
+        render_stats_.frame_skipped  = resize_failed;
     }
 
     // Fix up culling stats (renderer only sees the culled frame).

@@ -185,6 +185,28 @@ add_executable(DebugHudTest
 target_include_directories(DebugHudTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
 add_test(NAME DebugHudTest COMMAND DebugHudTest)
 
+add_executable(HudContractTest
+    HudContractTest.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/Engine.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/DebugControls.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/SimState.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/CrowdSystems.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/Clock.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/FixedStep.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Runtime/ScopeTimer.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/RenderFrame.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/RenderCamera.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/ViewCulling.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/Renderer.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/WorldDebugPass.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/DebugOverlay.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Render/DebugHud.cpp
+    ${CMAKE_SOURCE_DIR}/Source/Platform/Window.cpp
+)
+target_link_libraries(HudContractTest PRIVATE DEcs d3d12 dxgi d3dcompiler)
+target_include_directories(HudContractTest PRIVATE ${CMAKE_SOURCE_DIR}/Source)
+add_test(NAME HudContractTest COMMAND HudContractTest)
+
 add_executable(DemoPresetTest
     DemoPresetTest.cpp
     ${CMAKE_SOURCE_DIR}/Source/Runtime/Engine.cpp
