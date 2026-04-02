@@ -20,6 +20,20 @@ static bool near(float a, float b, float eps = 0.001f) {
     return std::fabs(a - b) < eps;
 }
 
+// Fill crowd bounding box from agents[] for manual test frames.
+static void fill_crowd_bounds(de::RenderFrame& f) {
+    if (f.extracted_count == 0) return;
+    f.crowd_min_x = f.crowd_max_x = f.agents[0].x;
+    f.crowd_min_y = f.crowd_max_y = f.agents[0].y;
+    f.has_crowd_bounds = true;
+    for (uint32_t i = 1; i < f.extracted_count; ++i) {
+        if (f.agents[i].x < f.crowd_min_x) f.crowd_min_x = f.agents[i].x;
+        if (f.agents[i].x > f.crowd_max_x) f.crowd_max_x = f.agents[i].x;
+        if (f.agents[i].y < f.crowd_min_y) f.crowd_min_y = f.agents[i].y;
+        if (f.agents[i].y > f.crowd_max_y) f.crowd_max_y = f.agents[i].y;
+    }
+}
+
 // Reproduce HLSL mul(M, v) with column-major storage.
 // m[0..3]=col0, m[4..7]=col1, m[8..11]=col2, m[12..15]=col3.
 // result.x = m[0]*v.x + m[4]*v.y + m[8]*v.z  + m[12]*v.w
@@ -68,6 +82,7 @@ static void test_single_agent() {
     frame.extracted_count = 1;
     frame.agents[0].x = 10.0f;
     frame.agents[0].y = -5.0f;
+    fill_crowd_bounds(frame);
 
     de::RenderCamera cam = de::auto_frame_crowd(frame, 1.0f);
 
@@ -87,6 +102,7 @@ static void test_two_agents() {
     frame.agents[0].y = 0.0f;
     frame.agents[1].x = 20.0f;
     frame.agents[1].y = 0.0f;
+    fill_crowd_bounds(frame);
 
     de::RenderCamera cam = de::auto_frame_crowd(frame, 1.0f);
 
@@ -109,6 +125,7 @@ static void test_translated_scene() {
     frame.agents[1] = { 105.0f, 195.0f, 0, 0, 1.0f };
     frame.agents[2] = { 95.0f,  205.0f, 0, 0, 1.0f };
     frame.agents[3] = { 105.0f, 205.0f, 0, 0, 1.0f };
+    fill_crowd_bounds(frame);
 
     de::RenderCamera cam = de::auto_frame_crowd(frame, 1.0f);
 
@@ -127,6 +144,7 @@ static void test_aspect_ratio() {
     frame.agents[0].y = -10.0f;
     frame.agents[1].x =  10.0f;
     frame.agents[1].y =  10.0f;
+    fill_crowd_bounds(frame);
 
     de::RenderCamera cam_wide = de::auto_frame_crowd(frame, 2.0f);
     de::RenderCamera cam_tall = de::auto_frame_crowd(frame, 0.5f);
@@ -221,6 +239,7 @@ static void test_y_dominated_scene() {
     frame.agents[0].y = -50.0f;
     frame.agents[1].x = 0.0f;
     frame.agents[1].y = 50.0f;
+    fill_crowd_bounds(frame);
 
     // Wide aspect: half_height = hw / 4, so hw must be large to cover y=50.
     de::RenderCamera cam = de::auto_frame_crowd(frame, 4.0f);

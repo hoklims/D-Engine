@@ -220,7 +220,7 @@ static void test_presets_compatible() {
         de::SimSnapshot snap = sim.snapshot();
         check(snap.crowd_agent_count > 0,
               "preset_compat: preset has agents");
-        check(snap.system_count == 13,
+        check(snap.system_count == 14,
               "preset_compat: 13 systems registered");
 
         // Run 10 ticks without crash.
@@ -473,7 +473,7 @@ static void test_pipeline_order() {
     sim.tick(1.0 / 60.0);
     de::SimSnapshot snap = sim.snapshot();
 
-    check(snap.system_count == 13, "pipeline: 13 systems");
+    check(snap.system_count == 14, "pipeline: 13 systems");
     check(std::strcmp(snap.systems[5].name, "LocalAvoidance") == 0,
           "pipeline: [5] is LocalAvoidance");
     check(std::strcmp(snap.systems[4].name, "ApplyCrowdSteer") == 0,

@@ -18,6 +18,19 @@ uint32_t extract_render_frame(World& world, uint64_t tick, uint64_t frame_id, Re
         [&](EntityId self, CrowdAgent&, Position& pos, Velocity& vel,
             DesiredDirection& dd, Target& tgt, Team& team,
             Health& hp, BehaviorLod& lod) {
+
+            // Always update full-crowd bounding box (for auto-frame).
+            if (!out.has_crowd_bounds) {
+                out.crowd_min_x = out.crowd_max_x = pos.x;
+                out.crowd_min_y = out.crowd_max_y = pos.y;
+                out.has_crowd_bounds = true;
+            } else {
+                if (pos.x < out.crowd_min_x) out.crowd_min_x = pos.x;
+                if (pos.x > out.crowd_max_x) out.crowd_max_x = pos.x;
+                if (pos.y < out.crowd_min_y) out.crowd_min_y = pos.y;
+                if (pos.y > out.crowd_max_y) out.crowd_max_y = pos.y;
+            }
+
             if (idx < k_max_render_agents) {
                 auto& item      = out.agents[idx];
                 item.x          = pos.x;

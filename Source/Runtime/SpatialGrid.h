@@ -146,7 +146,7 @@ struct SpatialGrid {
                     float ddx = e.x - x;
                     float ddy = e.y - y;
                     float d2 = ddx * ddx + ddy * ddy;
-                    if (d2 < r2) {
+                    if (d2 <= r2) {
                         fn(e, d2);
                         ++visited;
                     }

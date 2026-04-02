@@ -19,6 +19,8 @@ Si vous ne l'avez pas lu, commencez la.
   Vision canonique, promesse du moteur, decisions fondatrices.
 - `Architecture_Blueprint.md`
   Forme cible du moteur 2.0.
+- `Macro_Roadmap.md`
+  Vue macro de pilotage: etat reel, lots fermes, lots ouverts, chemin critique.
 - `Systems_Spec.md`
   Liste des systemes indispensables et de leurs contrats.
 - `Roadmap.md`
@@ -33,6 +35,7 @@ Si vous ne l'avez pas lu, commencez la.
 ### Comprendre la 2.0 en 10 minutes
 
 - handbook,
+- macro roadmap,
 - roadmap.
 
 ### Comprendre le coeur moteur
@@ -45,6 +48,7 @@ Si vous ne l'avez pas lu, commencez la.
 ### Comprendre le vertical slice
 
 - handbook,
+- macro roadmap,
 - execution plan,
 - roadmap.
 

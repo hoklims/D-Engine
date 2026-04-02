@@ -32,7 +32,23 @@ static uint32_t integrate_position(WorldView& view, float dt, CommandBuffer&) {
     return count;
 }
 
-// -- SimState ----------------------------------------------------------------
+// -- SimState lifecycle -------------------------------------------------------
+
+SimState::~SimState() {
+    if (crowd_ctx_) {
+        // If our context is the globally installed one, uninstall it
+        // so s_ctx never dangles after destruction.
+        if (is_active_crowd_context(crowd_ctx_)) {
+            install_crowd_context(crowd_ctx_);
+            set_battlefield_grids(nullptr, 0);
+            install_crowd_context(nullptr);
+        }
+        destroy_crowd_context(crowd_ctx_);
+        crowd_ctx_ = nullptr;
+    }
+}
+
+// -- SimState bootstrap ------------------------------------------------------
 
 void SimState::bootstrap() {
     world = World{};
@@ -53,6 +69,8 @@ void SimState::bootstrap() {
     nav_failures_this_tick_      = 0;
     nav_blocked_cells_           = 0;
     nav_grid_active_             = false;
+    if (!crowd_ctx_) crowd_ctx_ = create_crowd_context();
+    install_crowd_context(crowd_ctx_);
     set_battlefield_grids(nullptr, 0);
     for (auto& c : lod_tier_counts_) c = 0;
     lod_skipped_this_tick_       = 0;
@@ -109,6 +127,8 @@ void SimState::bootstrap_crowd(const CrowdConfig& cfg) {
     nav_failures_this_tick_      = 0;
     nav_blocked_cells_           = 0;
     nav_grid_active_             = false;
+    if (!crowd_ctx_) crowd_ctx_ = create_crowd_context();
+    install_crowd_context(crowd_ctx_);
     set_battlefield_grids(nullptr, 0);
     for (auto& c : lod_tier_counts_) c = 0;
     lod_skipped_this_tick_       = 0;
@@ -230,6 +250,7 @@ void SimState::tick(double step_dt) {
     // stats, hash).  evaluate_budget() runs outside the measured region.
     auto tick_start = std::chrono::high_resolution_clock::now();
 
+    install_crowd_context(crowd_ctx_);
     cull_pre_dead();
 
     float dt = static_cast<float>(step_dt);
@@ -326,7 +347,15 @@ void SimState::shutdown() {
     nav_failures_this_tick_      = 0;
     nav_blocked_cells_           = 0;
     nav_grid_active_             = false;
-    set_battlefield_grids(nullptr, 0);
+    if (crowd_ctx_) {
+        if (is_active_crowd_context(crowd_ctx_)) {
+            install_crowd_context(crowd_ctx_);
+            set_battlefield_grids(nullptr, 0);
+            install_crowd_context(nullptr);
+        }
+        destroy_crowd_context(crowd_ctx_);
+        crowd_ctx_ = nullptr;
+    }
     for (auto& c : lod_tier_counts_) c = 0;
     lod_skipped_this_tick_       = 0;
     melee_bp_checks_             = 0;
@@ -420,6 +449,7 @@ void SimState::register_crowd_systems() {
     add_system("RemoveDead",         remove_dead);
     add_system("IntegrateVelocity",  integrate_velocity);
     add_system("IntegratePosition",  integrate_position);
+    add_system("ClampBlocked",       clamp_blocked_positions);
 }
 
 void SimState::update_crowd_stats() {

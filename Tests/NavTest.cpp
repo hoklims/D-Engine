@@ -385,8 +385,8 @@ static void test_nav_out_of_grid_no_bypass() {
 // =================================================================
 
 static void test_nav_wall_no_crossing_through_wall() {
-    // Track agent positions every tick and verify no agent teleports
-    // through the wall (crosses x=0 outside the gap y-band).
+    // Track agent positions every tick and verify no agent occupies a
+    // blocked wall cell.  ClampBlocked system enforces the hard constraint.
     de::ObstacleDef obstacles[39];
     int count = 0;
     for (int y = 0; y < 40; ++y) {

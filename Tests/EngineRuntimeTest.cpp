@@ -483,6 +483,58 @@ static void test_overlay_matches_render_stats() {
 }
 
 // =================================================================
+//  Pause -> single-step -> resume: accumulator stays clean
+// =================================================================
+
+static void test_pause_step_resume() {
+    de::EngineConfig cfg;
+    cfg.start_scene     = de::StartScene::Crowd;
+    cfg.enable_renderer = false;
+
+    de::Engine engine;
+    check(engine.init(cfg), "psr: init ok");
+
+    // Run a few frames to reach steady state.
+    for (int i = 0; i < 5; ++i)
+        engine.step_one_frame();
+    uint64_t tick_before = engine.frame_info().sim_tick_index;
+
+    // Pause.
+    de::DebugAction pause = {};
+    pause.toggle_pause = true;
+    engine.debug_controls_mut().apply(pause);
+
+    // Several paused frames -- tick must not advance.
+    for (int i = 0; i < 5; ++i)
+        engine.step_one_frame();
+    check(engine.frame_info().sim_tick_index == tick_before,
+          "psr: tick unchanged while paused");
+
+    // Single-step: exactly +1.
+    de::DebugAction step = {};
+    step.single_step = true;
+    engine.debug_controls_mut().apply(step);
+    engine.step_one_frame();
+    check(engine.frame_info().sim_tick_index == tick_before + 1,
+          "psr: +1 tick after single-step");
+
+    // Resume (unpause).
+    de::DebugAction unpause = {};
+    unpause.toggle_pause = true;
+    engine.debug_controls_mut().apply(unpause);
+    check(!engine.debug_controls().paused, "psr: unpaused");
+
+    // Run a frame after resume -- should NOT produce a burst of many ticks.
+    engine.step_one_frame();
+    uint64_t tick_after_resume = engine.frame_info().sim_tick_index;
+    // At most a small number of steps (real clock delta is tiny in tests).
+    check(tick_after_resume <= tick_before + 1 + 3,
+          "psr: no tick burst after resume (at most ~2 steps)");
+
+    engine.shutdown();
+}
+
+// =================================================================
 
 int main() {
     test_crowd_headless();
@@ -500,6 +552,7 @@ int main() {
     test_render_frame_pre_cull_after_zoom();
     test_culling_stats_invariant();
     test_overlay_matches_render_stats();
+    test_pause_step_resume();
 
     std::printf("\nEngineRuntimeTest: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail;

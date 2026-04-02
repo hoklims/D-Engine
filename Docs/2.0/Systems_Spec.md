@@ -5,7 +5,7 @@
 Lister les systemes indispensables de D-Engine 2.0, leur role et leur contrat de
 performance.
 
-## Snapshot implemente au 2026-04-01
+## Snapshot implemente au 2026-04-02
 
 Les blocs suivants existent deja dans la branche:
 
@@ -25,15 +25,32 @@ Les blocs suivants existent deja dans la branche:
 - hash de simulation par tick + historique recent,
 - budget contracts explicites,
 - reponse budget-aware progressive,
-- tests dedies runtime, ECS, crowd, navigation, LOD, melee, hash et budget.
+- extraction de `RenderFrame`,
+- renderer DX12 minimal,
+- camera ortho auto-framee,
+- crowd instanciee debug,
+- world debug pass,
+- overlay debug runtime + HUD structure,
+- silhouette crowd orientee,
+- culling CPU render-side,
+- presets demo et stress,
+- benchmark headless structurel / budget,
+- avoidance locale TTC avec snapshot de vitesses et nav safety,
+- `RenderStats`,
+- debug controls runtime,
+- tests dedies runtime, ECS, crowd, navigation, LOD, melee, hash, budget et
+  rendu debug.
 
 Les blocs suivants restent des cibles, pas encore des realites:
 
 - job system,
 - allocateurs temps reel,
 - capture/replay complet des inputs,
-- extraction crowd vers le rendu,
-- rendu DX12.
+- culling GPU,
+- skinning compute,
+- presentation/demo polish,
+- perf renderer active-path plus serieuse,
+- VAT.
 
 ## 1. Runtime
 
@@ -71,6 +88,48 @@ Etat:
 - historique recent via ring buffer,
 - comparaison headless de sequences de hash,
 - capture/replay complet des inputs encore absent.
+
+### Debug Controls
+
+Role:
+
+- transformer l'executable en banc de test interne,
+- permettre pause, single-step, reset et switch de scene,
+- rendre l'etat courant lisible sans debugger.
+
+Contrat:
+
+- `single-step` = exactement un tick,
+- reset et switch de scene repartent sans reliquat fixed-step,
+- les toggles one-shot resistent a l'auto-repeat clavier.
+
+Etat:
+
+- implemente en version 1,
+- pause, step, reset, switch de scene et camera debug en place,
+- presets demo/stress en place,
+- feedback runtime via titre de fenetre en place,
+- overlay debug runtime et HUD structure en place.
+
+### Benchmark Harness
+
+Role:
+
+- comparer des runs headless,
+- figer des presets de stress,
+- separer les signaux deterministes des signaux wall-clock.
+
+Contrat:
+
+- comparaison structurelle stable entre deux runs identiques,
+- comparaison budget/perf separee,
+- zero dependance au renderer.
+
+Etat:
+
+- implemente en version 1,
+- presets de stress en place,
+- benchmark headless structurel / budget en place.
 
 ## 2. ECS
 
@@ -177,7 +236,9 @@ Contrat:
 
 Etat:
 
-- separation locale soft uniquement,
+- separation locale soft + avoidance TTC avec biais lateral,
+- vitesses voisines lues depuis un snapshot commun,
+- garde-fou nav segmentaire sur battlefield,
 - pas encore d'avoidance type ORCA,
 - broadphase melee dedie deja separe du simple targeting,
 - avoidance melee plus intelligente encore absente.
@@ -293,6 +354,30 @@ Contrat:
 
 ## 9. Renderer
 
+### Frame Extraction and Debug View
+
+Role:
+
+- projeter un etat de simulation publie vers le rendu sans le polluer,
+- garder un chemin headless testable,
+- fournir une premiere visibilite runtime.
+
+Contrat:
+
+- extraction read-only depuis l'etat committe,
+- aucun pointeur du renderer vers le `World`,
+- fallback headless si le renderer n'est pas disponible.
+
+Etat:
+
+- implemente en version 1,
+- `RenderFrame` en place,
+- `RenderCamera` ortho auto-framee en place,
+- `render_frame()` pre-cull preserve,
+- build interne testable en place,
+- HUD structure en place,
+- presentation encore strictement debug.
+
 ### Visibility and Submission
 
 Role:
@@ -302,9 +387,18 @@ Role:
 
 Contrat:
 
-- culling GPU,
-- pipeline GPU-driven,
+- culling CPU simple aujourd'hui, GPU ensuite,
+- pipeline GPU-driven a terme,
 - batching maximal sur la foule.
+
+Etat:
+
+- implemente en version 1,
+- un draw instancie crowd en place,
+- culling CPU ortho render-side en place,
+- `RenderStats` en place,
+- pas encore de culling GPU,
+- pas encore de pipeline GPU-driven complet.
 
 ### PSO and Shader Strategy
 
@@ -318,6 +412,12 @@ Contrat:
 - permutations limitees,
 - conventions fortes sur les materiaux crowd.
 
+Etat:
+
+- un seul PSO debug en place,
+- shaders HLSL minimaux en place,
+- pas encore de vrai systeme de materiaux.
+
 ### Far-Field
 
 Role:
@@ -329,6 +429,10 @@ Contrat:
 - VAT ou equivalent,
 - cout CPU quasi nul,
 - compatibilite avec le budget global.
+
+Etat:
+
+- non implemente.
 
 ## 10. Telemetry and Perf Gates
 
@@ -354,6 +458,8 @@ Etat:
 - hash de simulation par tick en place,
 - budget contracts explicites en place,
 - reponse budget-aware visible dans le snapshot en place,
+- benchmark headless et presets de stress en place,
+- compteurs render debug (`RenderStats`, culling, HUD) en place,
 - timings GPU et perf gates non implementes.
 
 ## 11. Budgets structurants

@@ -1,5 +1,6 @@
 #include "Runtime/SimState.h"
 #include "Runtime/CrowdComponents.h"
+#include "Runtime/CrowdSystems.h"
 #include "Runtime/SpatialGrid.h"
 
 #include <cmath>
@@ -198,7 +199,7 @@ static void test_crowd_system_order() {
     sim.tick(1.0);
 
     de::SimSnapshot snap = sim.snapshot();
-    check(snap.system_count == 13, "system_order: 13 systems registered");
+    check(snap.system_count == 14, "system_order: 14 systems registered");
 
     check(std::strcmp(snap.systems[0].name, "SelectTargets") == 0,
           "system_order: [0] SelectTargets");
@@ -226,6 +227,8 @@ static void test_crowd_system_order() {
           "system_order: [11] IntegrateVelocity");
     check(std::strcmp(snap.systems[12].name, "IntegratePosition") == 0,
           "system_order: [12] IntegratePosition");
+    check(std::strcmp(snap.systems[13].name, "ClampBlocked") == 0,
+          "system_order: [13] ClampBlocked");
 }
 
 // =================================================================
@@ -296,7 +299,7 @@ static void test_crowd_bootstrap_idempotent() {
     de::SimSnapshot snap = sim.snapshot();
     check(snap.tick_count == 0,
           "crowd_idempotent: tick_count reset");
-    check(snap.system_count == 13,
+    check(snap.system_count == 14,
           "crowd_idempotent: 13 systems, not 26");
     check(snap.crowd_agent_count == 20,
           "crowd_idempotent: crowd metrics correct after re-bootstrap");
@@ -1275,6 +1278,244 @@ static void test_goal_snapshot_coherent() {
 }
 
 // =================================================================
+//  Target retarget: nearest enemy always wins
+// =================================================================
+
+static void test_retarget_nearest_enemy() {
+    auto* ctx = de::create_crowd_context();
+    de::install_crowd_context(ctx);
+    de::World world;
+    de::CommandBuffer cmds;
+
+    // Agent A (team 0) at origin.
+    de::EntityId a = world.create();
+    world.set(a, de::CrowdAgent{});
+    world.set(a, de::Team{0});
+    world.set(a, de::Position{0.0f, 0.0f});
+    world.set(a, de::Velocity{});
+    world.set(a, de::MoveSpeed{3.0f});
+    world.set(a, de::Target{});
+    world.set(a, de::DesiredDirection{});
+    world.set(a, de::Health{100.0f, 100.0f});
+    world.set(a, de::AttackRange{2.0f});
+    world.set(a, de::AttackDamage{10.0f});
+    world.set(a, de::AttackCooldown{0.0f, 1.0f});
+    world.set(a, de::BattleGoal{10.0f, 0.0f});
+    world.set(a, de::EngageRadius{15.0f});
+    world.set(a, de::Separation{0.8f, 5.0f});
+    world.set(a, de::BehaviorLod{});
+
+    // Enemy far (team 1) at (10, 0).
+    de::EntityId far = world.create();
+    world.set(far, de::CrowdAgent{});
+    world.set(far, de::Team{1});
+    world.set(far, de::Position{10.0f, 0.0f});
+    world.set(far, de::Velocity{});
+    world.set(far, de::MoveSpeed{3.0f});
+    world.set(far, de::Target{});
+    world.set(far, de::DesiredDirection{});
+    world.set(far, de::Health{100.0f, 100.0f});
+    world.set(far, de::AttackRange{2.0f});
+    world.set(far, de::AttackDamage{10.0f});
+    world.set(far, de::AttackCooldown{0.0f, 1.0f});
+    world.set(far, de::BattleGoal{-10.0f, 0.0f});
+    world.set(far, de::EngageRadius{15.0f});
+    world.set(far, de::Separation{0.8f, 5.0f});
+    world.set(far, de::BehaviorLod{});
+
+    // Enemy close (team 1) at (3, 0).
+    de::EntityId close = world.create();
+    world.set(close, de::CrowdAgent{});
+    world.set(close, de::Team{1});
+    world.set(close, de::Position{3.0f, 0.0f});
+    world.set(close, de::Velocity{});
+    world.set(close, de::MoveSpeed{3.0f});
+    world.set(close, de::Target{});
+    world.set(close, de::DesiredDirection{});
+    world.set(close, de::Health{100.0f, 100.0f});
+    world.set(close, de::AttackRange{2.0f});
+    world.set(close, de::AttackDamage{10.0f});
+    world.set(close, de::AttackCooldown{0.0f, 1.0f});
+    world.set(close, de::BattleGoal{-10.0f, 0.0f});
+    world.set(close, de::EngageRadius{15.0f});
+    world.set(close, de::Separation{0.8f, 5.0f});
+    world.set(close, de::BehaviorLod{});
+
+    // Manually set A's target to the FAR enemy.
+    world.set(a, de::Target{far, true});
+
+    de::reset_crowd_tick_counters();
+    de::set_crowd_tick_count(0);
+    de::WorldView view(world);
+
+    // Run select_targets -- should retarget to nearest (close).
+    de::select_targets(view, 0.016f, cmds);
+
+    auto* tgt = view.get<de::Target>(a);
+    check(tgt && tgt->has_target, "retarget: agent a has a target");
+    check(tgt && tgt->entity == close,
+          "retarget: agent a targets the CLOSER enemy, not the old far one");
+    de::destroy_crowd_context(ctx);
+    de::install_crowd_context(nullptr);
+}
+
+// =================================================================
+//  Two SimState instances do not pollute each other
+// =================================================================
+
+static void test_two_simstates_isolated() {
+    // Sim A: close teams, will fight.
+    de::SimState sim_a;
+    de::CrowdConfig cfg_a;
+    cfg_a.agents_per_team = 5;
+    cfg_a.team_spacing    = 2.0f;
+    cfg_a.attack_range    = 5.0f;
+    cfg_a.engage_radius   = 20.0f;
+    cfg_a.attack_damage   = 200.0f;
+    cfg_a.attack_interval = 0.0f;
+    sim_a.bootstrap_crowd(cfg_a);
+
+    // Sim B: far teams, no fighting.
+    de::SimState sim_b;
+    de::CrowdConfig cfg_b;
+    cfg_b.agents_per_team = 5;
+    cfg_b.team_spacing    = 200.0f;
+    cfg_b.attack_range    = 2.0f;
+    cfg_b.engage_radius   = 15.0f;
+    sim_b.bootstrap_crowd(cfg_b);
+
+    // Tick A (close combat, expect deaths).
+    for (int i = 0; i < 5; ++i) sim_a.tick(1.0 / 60.0);
+    auto snap_a = sim_a.snapshot();
+
+    // Tick B (far apart, expect no combat).
+    for (int i = 0; i < 5; ++i) sim_b.tick(1.0 / 60.0);
+    auto snap_b = sim_b.snapshot();
+
+    // B must not have picked up A's combat state.
+    check(snap_b.attacks_this_tick == 0,
+          "isolation: sim_b has no attacks (far apart)");
+    check(snap_b.deaths_this_tick == 0,
+          "isolation: sim_b has no deaths");
+    check(snap_b.crowd_agent_count == 10,
+          "isolation: sim_b still has all 10 agents");
+
+    // A should have had combat.
+    // Re-snapshot A to confirm its state wasn't clobbered by B's tick.
+    auto snap_a2 = sim_a.snapshot();
+    check(snap_a2.tick_count == 5,
+          "isolation: sim_a still at tick 5");
+
+    sim_a.shutdown();
+    sim_b.shutdown();
+}
+
+// =================================================================
+//  Crowd context guard: no context -> has_crowd_context() false
+// =================================================================
+
+static void test_crowd_context_guard() {
+    // After shutdown, no context should be installed.
+    de::SimState sim;
+    sim.bootstrap_crowd();
+    check(de::has_crowd_context(), "ctx_guard: context present after bootstrap");
+    sim.shutdown();
+    check(!de::has_crowd_context(), "ctx_guard: context cleared after shutdown");
+
+    // A fresh SimState that was never bootstrapped has no context.
+    {
+        de::SimState fresh;
+        (void)fresh;
+        check(!de::has_crowd_context(), "ctx_guard: no context on fresh SimState");
+    }
+
+    // After bootstrap + tick, context is still present.
+    de::SimState sim2;
+    sim2.bootstrap_crowd();
+    sim2.tick(1.0 / 60.0);
+    check(de::has_crowd_context(), "ctx_guard: context present after tick");
+    sim2.shutdown();
+}
+
+// =================================================================
+//  SimState destructor cleans up without explicit shutdown()
+// =================================================================
+
+static void test_simstate_destructor_cleanup() {
+    // Create and bootstrap, then let destructor run without shutdown().
+    // Must not leak, crash, or leave s_ctx dangling.
+    {
+        de::SimState sim;
+        sim.bootstrap_crowd();
+        sim.tick(1.0 / 60.0);
+        check(de::has_crowd_context(), "dtor_cleanup: context present before dtor");
+        // no shutdown() -- destructor handles cleanup
+    }
+    // After destruction, s_ctx must NOT point to freed memory.
+    check(!de::has_crowd_context(),
+          "dtor_cleanup: has_crowd_context() false after dtor (no dangling)");
+}
+
+// =================================================================
+//  Destroying one SimState must not uninstall another's context
+// =================================================================
+
+static void test_dtor_does_not_clobber_other_context() {
+    de::SimState alive;
+    alive.bootstrap_crowd();
+    alive.tick(1.0 / 60.0);
+    check(de::has_crowd_context(), "dtor_clobber: context present from alive");
+
+    {
+        de::SimState doomed;
+        doomed.bootstrap_crowd();
+        // doomed installs its own context, overriding alive's.
+    }
+    // doomed destroyed -- it uninstalled its own context.
+    // alive's context is NOT the active one anymore, so has_crowd_context
+    // may be false.  The key contract: no dangling pointer.
+    // Re-tick alive to re-install its context and verify it still works.
+    alive.tick(1.0 / 60.0);
+    check(de::has_crowd_context(), "dtor_clobber: context restored after alive.tick");
+    auto snap = alive.snapshot();
+    check(snap.crowd_agent_count == 20,
+          "dtor_clobber: alive still has 20 agents after doomed destroyed");
+    alive.shutdown();
+}
+
+// =================================================================
+//  shutdown() of inactive SimState must not clobber active context
+// =================================================================
+
+static void test_shutdown_does_not_clobber_other_context() {
+    de::SimState sim_a;
+    sim_a.bootstrap_crowd();
+
+    de::SimState sim_b;
+    sim_b.bootstrap_crowd();
+    sim_b.tick(1.0 / 60.0);
+    // sim_b now owns the active context (last to install via tick).
+    check(de::has_crowd_context(), "shutdown_clobber: context active before shutdown");
+
+    // Shutdown sim_a -- it is NOT the active context owner.
+    // This must NOT destroy or uninstall sim_b's active context.
+    sim_a.shutdown();
+
+    check(de::has_crowd_context(),
+          "shutdown_clobber: context still active after inactive shutdown");
+
+    // sim_b must still work: tick should succeed, agents still alive.
+    sim_b.tick(1.0 / 60.0);
+    auto snap = sim_b.snapshot();
+    check(snap.crowd_agent_count == 20,
+          "shutdown_clobber: sim_b still has 20 agents");
+    check(snap.tick_count == 2,
+          "shutdown_clobber: sim_b at tick 2");
+
+    sim_b.shutdown();
+}
+
+// =================================================================
 //  main
 // =================================================================
 
@@ -1335,6 +1576,18 @@ int main() {
     test_goal_engage_overrides();
     test_goal_separation_compat();
     test_goal_snapshot_coherent();
+
+    // Target retarget contract
+    test_retarget_nearest_enemy();
+
+    // Multi-instance isolation
+    test_two_simstates_isolated();
+
+    // Context guard contract
+    test_crowd_context_guard();
+    test_simstate_destructor_cleanup();
+    test_dtor_does_not_clobber_other_context();
+    test_shutdown_does_not_clobber_other_context();
 
     std::printf("\nCrowdTest results: %d passed, %d failed\n",
                 g_pass, g_fail);

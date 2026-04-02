@@ -459,6 +459,55 @@ static void test_over_aligned_multiple_entities() {
 }
 
 // =====================================================================
+//  Iteration guard: RAII and is_iterating() contract
+// =====================================================================
+
+static void test_is_iterating_during_each() {
+    de::World w;
+    de::EntityId e = w.create();
+    w.set(e, Position{1.0f, 2.0f});
+
+    bool was_iterating = false;
+    w.each<Position>([&](de::EntityId, Position&) {
+        was_iterating = w.is_iterating();
+    });
+    check(was_iterating, "is_iterating true inside each()");
+    check(!w.is_iterating(), "is_iterating false after each()");
+}
+
+static void test_nested_iteration_guard() {
+    de::World w;
+    de::EntityId e = w.create();
+    w.set(e, Position{1.0f, 2.0f});
+    w.set(e, Velocity{3.0f, 4.0f});
+
+    bool inner_iterating = false;
+    w.each<Position>([&](de::EntityId, Position&) {
+        w.each<Velocity>([&](de::EntityId, Velocity&) {
+            inner_iterating = w.is_iterating();
+        });
+    });
+    check(inner_iterating, "nested: is_iterating true in inner each()");
+    check(!w.is_iterating(), "nested: is_iterating false after both each()");
+}
+
+static void test_in_place_write_during_iteration() {
+    de::World w;
+    de::EntityId e = w.create();
+    w.set(e, Position{1.0f, 2.0f});
+    w.set(e, Velocity{3.0f, 4.0f});
+
+    // In-place component write during iteration is allowed (not structural).
+    w.each<Position, Velocity>([](de::EntityId, Position& p, Velocity& v) {
+        p.x += v.dx;
+        p.y += v.dy;
+    });
+
+    check(w.get<Position>(e)->x == 4.0f, "in-place write: Position.x updated");
+    check(w.get<Position>(e)->y == 6.0f, "in-place write: Position.y updated");
+}
+
+// =====================================================================
 //  main
 // =====================================================================
 
@@ -504,6 +553,11 @@ int main() {
     test_over_aligned_component();
     test_over_aligned_migration();
     test_over_aligned_multiple_entities();
+
+    // Iteration guard
+    test_is_iterating_during_each();
+    test_nested_iteration_guard();
+    test_in_place_write_during_iteration();
 
     std::printf("\nEcsTest results: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail > 0 ? 1 : 0;

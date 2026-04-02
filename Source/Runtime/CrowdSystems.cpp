@@ -5,12 +5,14 @@
 
 #include <cfloat>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <unordered_set>
 #include <vector>
 
 namespace de {
 
-// -- Per-tick combat state (file scope) --------------------------------------
+// -- Per-tick combat state ---------------------------------------------------
 
 struct HitEvent {
     EntityId target;
@@ -23,89 +25,105 @@ struct MeleePair {
     EntityId defender;
 };
 
-static std::vector<HitEvent>  s_hit_buffer;
-static std::vector<MeleePair> s_melee_pairs;
-static SpatialGrid s_grid;
-static const BattlefieldGrid* const* s_nav_grids = nullptr;
-static uint32_t s_nav_grid_count         = 0;
-static uint32_t s_attacks_this_tick      = 0;
-static uint32_t s_deaths_this_tick       = 0;
-static uint32_t s_candidates_scanned     = 0;
-static uint32_t s_separation_pairs       = 0;
-static uint32_t s_agents_engaged         = 0;
-static uint32_t s_nav_queries            = 0;
-static uint32_t s_nav_failures           = 0;
-static uint32_t s_lod_counts[k_lod_tier_count] = {};
-static uint32_t s_lod_skipped            = 0;
-static const BehaviorLodConfig* s_lod_cfg = nullptr;
-static BehaviorLodConfig s_lod_default;
-static uint64_t s_crowd_tick             = 0;
+// All per-tick mutable state lives in CrowdTickContext.
+// Each SimState owns one.  install_crowd_context() sets the active pointer.
+struct CrowdTickContext {
+    std::vector<HitEvent>  hit_buffer;
+    std::vector<MeleePair> melee_pairs;
+    SpatialGrid grid;
+    const BattlefieldGrid* const* nav_grids = nullptr;
+    uint32_t nav_grid_count         = 0;
+    uint32_t attacks_this_tick      = 0;
+    uint32_t deaths_this_tick       = 0;
+    uint32_t candidates_scanned     = 0;
+    uint32_t separation_pairs       = 0;
+    uint32_t agents_engaged         = 0;
+    uint32_t nav_queries            = 0;
+    uint32_t nav_failures           = 0;
+    uint32_t lod_counts[k_lod_tier_count] = {};
+    uint32_t lod_skipped            = 0;
+    const BehaviorLodConfig* lod_cfg = nullptr;
+    BehaviorLodConfig lod_default;
+    uint64_t crowd_tick             = 0;
+    uint32_t avoidance_neighbors    = 0;
+    uint32_t avoidance_adjusted     = 0;
+    uint32_t melee_bp_checks        = 0;
+    uint32_t melee_pairs_count      = 0;
+    uint32_t melee_attacks          = 0;
+    std::unordered_set<uint64_t> melee_valid_set;
+    std::unordered_map<uint32_t, std::pair<float, float>> vel_snapshot;
+};
 
-// Melee broadphase telemetry.
-// Local avoidance telemetry.
-static uint32_t s_avoidance_neighbors    = 0;
-static uint32_t s_avoidance_adjusted     = 0;
+// Active context pointer (one at a time, single-threaded).
+static CrowdTickContext* s_ctx = nullptr;
 
-static uint32_t s_melee_bp_checks        = 0;
-static uint32_t s_melee_pairs_count      = 0;
-static uint32_t s_melee_attacks          = 0;
+CrowdTickContext* create_crowd_context()  { return new CrowdTickContext(); }
+void destroy_crowd_context(CrowdTickContext* ctx) { delete ctx; }
+void install_crowd_context(CrowdTickContext* ctx) { s_ctx = ctx; }
+bool has_crowd_context() { return s_ctx != nullptr; }
+bool is_active_crowd_context(const CrowdTickContext* ctx) { return s_ctx == ctx; }
 
-// Broadphase validation set: O(1) lookup for (attacker, defender) pairs.
-static std::unordered_set<uint64_t> s_melee_valid_set;
-
-// Velocity snapshot for simultaneous avoidance resolution.
-// Keyed by EntityId.index -> (vx, vy) at ApplyCrowdSteer output.
-static std::unordered_map<uint32_t, std::pair<float, float>> s_vel_snapshot;
+// Fatal guard: abort in all builds if crowd context is not installed.
+static void enforce_crowd_context() {
+    if (!s_ctx) {
+        std::fprintf(stderr,
+            "FATAL: crowd system called without installed CrowdTickContext\n");
+        std::fflush(stderr);
+        std::abort();
+    }
+}
 
 static uint64_t make_pair_key(uint32_t a_idx, uint32_t d_idx) {
     return (static_cast<uint64_t>(a_idx) << 32) | static_cast<uint32_t>(d_idx);
 }
 
-uint32_t crowd_attacks_this_tick()            { return s_attacks_this_tick; }
-uint32_t crowd_deaths_queued_this_tick()      { return s_deaths_this_tick; }
-uint32_t crowd_candidates_scanned_this_tick() { return s_candidates_scanned; }
-uint32_t crowd_separation_pairs_this_tick()   { return s_separation_pairs; }
-uint32_t crowd_agents_engaged_this_tick()     { return s_agents_engaged; }
-uint32_t crowd_nav_queries_this_tick()        { return s_nav_queries; }
-uint32_t crowd_nav_failures_this_tick()       { return s_nav_failures; }
-uint32_t crowd_lod_tier_count(uint8_t tier)   { return (tier < k_lod_tier_count) ? s_lod_counts[tier] : 0; }
-uint32_t crowd_lod_skipped_this_tick()        { return s_lod_skipped; }
+uint32_t crowd_attacks_this_tick()            { enforce_crowd_context(); return s_ctx->attacks_this_tick; }
+uint32_t crowd_deaths_queued_this_tick()      { enforce_crowd_context(); return s_ctx->deaths_this_tick; }
+uint32_t crowd_candidates_scanned_this_tick() { enforce_crowd_context(); return s_ctx->candidates_scanned; }
+uint32_t crowd_separation_pairs_this_tick()   { enforce_crowd_context(); return s_ctx->separation_pairs; }
+uint32_t crowd_agents_engaged_this_tick()     { enforce_crowd_context(); return s_ctx->agents_engaged; }
+uint32_t crowd_nav_queries_this_tick()        { enforce_crowd_context(); return s_ctx->nav_queries; }
+uint32_t crowd_nav_failures_this_tick()       { enforce_crowd_context(); return s_ctx->nav_failures; }
+uint32_t crowd_lod_tier_count(uint8_t tier)   { enforce_crowd_context(); return (tier < k_lod_tier_count) ? s_ctx->lod_counts[tier] : 0; }
+uint32_t crowd_lod_skipped_this_tick()        { enforce_crowd_context(); return s_ctx->lod_skipped; }
 
-uint32_t avoidance_neighbors_this_tick()      { return s_avoidance_neighbors; }
-uint32_t avoidance_adjusted_this_tick()       { return s_avoidance_adjusted; }
+uint32_t avoidance_neighbors_this_tick()      { enforce_crowd_context(); return s_ctx->avoidance_neighbors; }
+uint32_t avoidance_adjusted_this_tick()       { enforce_crowd_context(); return s_ctx->avoidance_adjusted; }
 
-uint32_t melee_broadphase_checks_this_tick()  { return s_melee_bp_checks; }
-uint32_t melee_pairs_this_tick()              { return s_melee_pairs_count; }
-uint32_t melee_attacks_this_tick()            { return s_melee_attacks; }
+uint32_t melee_broadphase_checks_this_tick()  { enforce_crowd_context(); return s_ctx->melee_bp_checks; }
+uint32_t melee_pairs_this_tick()              { enforce_crowd_context(); return s_ctx->melee_pairs_count; }
+uint32_t melee_attacks_this_tick()            { enforce_crowd_context(); return s_ctx->melee_attacks; }
 
-void set_behavior_lod_config(const BehaviorLodConfig* cfg) { s_lod_cfg = cfg; }
-void set_crowd_tick_count(uint64_t tick) { s_crowd_tick = tick; }
+void set_behavior_lod_config(const BehaviorLodConfig* cfg) { enforce_crowd_context(); s_ctx->lod_cfg = cfg; }
+void set_crowd_tick_count(uint64_t tick) { enforce_crowd_context(); s_ctx->crowd_tick = tick; }
 
 void set_battlefield_grids(const BattlefieldGrid* const* grids, uint32_t count) {
-    s_nav_grids      = grids;
-    s_nav_grid_count = count;
+    enforce_crowd_context();
+    s_ctx->nav_grids      = grids;
+    s_ctx->nav_grid_count = count;
 }
-uint32_t get_battlefield_grid_count() { return s_nav_grid_count; }
+uint32_t get_battlefield_grid_count() { enforce_crowd_context(); return s_ctx->nav_grid_count; }
 
 void     reset_crowd_tick_counters() {
-    s_attacks_this_tick  = 0;
-    s_deaths_this_tick   = 0;
-    s_candidates_scanned = 0;
-    s_separation_pairs   = 0;
-    s_agents_engaged     = 0;
-    s_nav_queries        = 0;
-    s_nav_failures       = 0;
-    for (auto& c : s_lod_counts) c = 0;
-    s_lod_skipped        = 0;
-    s_avoidance_neighbors = 0;
-    s_avoidance_adjusted  = 0;
-    s_melee_bp_checks    = 0;
-    s_melee_pairs_count  = 0;
-    s_melee_attacks      = 0;
-    s_vel_snapshot.clear();
-    s_hit_buffer.clear();
-    s_melee_pairs.clear();
-    s_melee_valid_set.clear();
+    enforce_crowd_context();
+    s_ctx->attacks_this_tick  = 0;
+    s_ctx->deaths_this_tick   = 0;
+    s_ctx->candidates_scanned = 0;
+    s_ctx->separation_pairs   = 0;
+    s_ctx->agents_engaged     = 0;
+    s_ctx->nav_queries        = 0;
+    s_ctx->nav_failures       = 0;
+    for (auto& c : s_ctx->lod_counts) c = 0;
+    s_ctx->lod_skipped        = 0;
+    s_ctx->avoidance_neighbors = 0;
+    s_ctx->avoidance_adjusted  = 0;
+    s_ctx->melee_bp_checks    = 0;
+    s_ctx->melee_pairs_count  = 0;
+    s_ctx->melee_attacks      = 0;
+    s_ctx->vel_snapshot.clear();
+    s_ctx->hit_buffer.clear();
+    s_ctx->melee_pairs.clear();
+    s_ctx->melee_valid_set.clear();
 }
 
 // -----------------------------------------------------------------------
@@ -116,7 +134,7 @@ void     reset_crowd_tick_counters() {
 // on the current tick.
 static bool lod_should_skip(const BehaviorLod& lod) {
     if (lod.stride <= 1) return false;
-    return (s_crowd_tick % lod.stride) != 0;
+    return (s_ctx->crowd_tick % lod.stride) != 0;
 }
 
 // -----------------------------------------------------------------------
@@ -128,8 +146,9 @@ static bool lod_should_skip(const BehaviorLod& lod) {
 
 uint32_t classify_behavior_lod(WorldView& view, float /*dt*/,
                                CommandBuffer& /*cmds*/) {
-    const BehaviorLodConfig& cfg = s_lod_cfg ? *s_lod_cfg : s_lod_default;
-    for (auto& c : s_lod_counts) c = 0;
+    enforce_crowd_context();
+    const BehaviorLodConfig& cfg = s_ctx->lod_cfg ? *s_ctx->lod_cfg : s_ctx->lod_default;
+    for (auto& c : s_ctx->lod_counts) c = 0;
 
     uint32_t count = 0;
     view.each<CrowdAgent, Position, Target, EngageRadius, BehaviorLod>(
@@ -173,8 +192,8 @@ uint32_t classify_behavior_lod(WorldView& view, float /*dt*/,
                     lod.stride = k_lod_strides[3];
                 }
             }
-            ++s_lod_counts[lod.tier];
-            if (lod_should_skip(lod)) ++s_lod_skipped;
+            ++s_ctx->lod_counts[lod.tier];
+            if (lod_should_skip(lod)) ++s_ctx->lod_skipped;
         });
     return count;
 }
@@ -183,15 +202,16 @@ uint32_t classify_behavior_lod(WorldView& view, float /*dt*/,
 //  select_targets
 // -----------------------------------------------------------------------
 // For each crowd agent, find the nearest living enemy (different team).
-// Keeps the current target if it is still alive and still an enemy.
+// Always picks the closest enemy -- does NOT keep the previous target.
 
 uint32_t select_targets(WorldView& view, float /*dt*/, CommandBuffer& /*cmds*/) {
+    enforce_crowd_context();
     // Rebuild spatial grid from current positions.
-    s_grid.clear();
-    s_candidates_scanned = 0;
+    s_ctx->grid.clear();
+    s_ctx->candidates_scanned = 0;
     view.each<CrowdAgent, Team, Position>(
         [](EntityId id, CrowdAgent&, Team& t, Position& p) {
-            s_grid.insert(id, t.id, p.x, p.y);
+            s_ctx->grid.insert(id, t.id, p.x, p.y);
         });
 
     uint32_t count = 0;
@@ -200,17 +220,11 @@ uint32_t select_targets(WorldView& view, float /*dt*/, CommandBuffer& /*cmds*/) 
             Position& my_pos, Target& tgt) {
             ++count;
 
-            // Keep current target if still valid.
-            if (tgt.has_target && view.alive(tgt.entity)) {
-                const auto* et = view.get<Team>(tgt.entity);
-                if (et && et->id != my_team.id) return;
-            }
-
-            // Find nearest enemy via spatial grid.
+            // Always pick the nearest enemy (contract: nearest enemy).
             uint32_t checked = 0;
-            auto result = s_grid.find_nearest_enemy(
+            auto result = s_ctx->grid.find_nearest_enemy(
                 my_pos.x, my_pos.y, my_team.id, self, checked);
-            s_candidates_scanned += checked;
+            s_ctx->candidates_scanned += checked;
             tgt.entity     = result.id;
             tgt.has_target = result.found;
         });
@@ -225,6 +239,7 @@ uint32_t select_targets(WorldView& view, float /*dt*/, CommandBuffer& /*cmds*/) 
 
 uint32_t compute_battle_goal(WorldView& view, float /*dt*/,
                              CommandBuffer& /*cmds*/) {
+    enforce_crowd_context();
     uint32_t count = 0;
     view.each<CrowdAgent, Team, Position, BattleGoal, DesiredDirection, BehaviorLod>(
         [&](EntityId, CrowdAgent&, Team& team, Position& pos,
@@ -238,12 +253,12 @@ uint32_t compute_battle_goal(WorldView& view, float /*dt*/,
             // authoritative.  If sample_flow fails (out of grid, blocked,
             // unreachable), the agent gets a zero direction -- it does NOT
             // fall back to direct line, which would silently bypass obstacles.
-            if (s_nav_grids && team.id < s_nav_grid_count) {
-                const BattlefieldGrid* grid = s_nav_grids[team.id];
+            if (s_ctx->nav_grids && team.id < s_ctx->nav_grid_count) {
+                const BattlefieldGrid* grid = s_ctx->nav_grids[team.id];
                 if (grid) {
                     float fx = 0.0f;
                     float fy = 0.0f;
-                    ++s_nav_queries;
+                    ++s_ctx->nav_queries;
                     if (grid->sample_flow(pos.x, pos.y, fx, fy)) {
                         float len = std::sqrt(fx * fx + fy * fy);
                         if (len > 1e-6f) {
@@ -253,7 +268,7 @@ uint32_t compute_battle_goal(WorldView& view, float /*dt*/,
                         }
                     }
                     // Fail-safe: zero direction (hold position).
-                    ++s_nav_failures;
+                    ++s_ctx->nav_failures;
                     dir.dx = 0.0f;
                     dir.dy = 0.0f;
                     return;
@@ -284,7 +299,8 @@ uint32_t compute_battle_goal(WorldView& view, float /*dt*/,
 
 uint32_t compute_desired_movement(WorldView& view, float /*dt*/,
                                   CommandBuffer& /*cmds*/) {
-    s_agents_engaged = 0;
+    enforce_crowd_context();
+    s_ctx->agents_engaged = 0;
     uint32_t count = 0;
     view.each<CrowdAgent, Position, Target, DesiredDirection,
               AttackRange, EngageRadius>(
@@ -305,7 +321,7 @@ uint32_t compute_desired_movement(WorldView& view, float /*dt*/,
             // Outside engage radius -- keep battle-goal direction.
             if (len > engage.radius) return;
 
-            ++s_agents_engaged;
+            ++s_ctx->agents_engaged;
 
             // In attack range -- stop moving, fight instead.
             if (len <= atk_range.range) {
@@ -331,6 +347,7 @@ uint32_t compute_desired_movement(WorldView& view, float /*dt*/,
 
 uint32_t apply_crowd_steering(WorldView& view, float /*dt*/,
                               CommandBuffer& /*cmds*/) {
+    enforce_crowd_context();
     uint32_t count = 0;
     view.each<CrowdAgent, Velocity, DesiredDirection, MoveSpeed>(
         [&](EntityId, CrowdAgent&, Velocity& vel,
@@ -372,17 +389,18 @@ uint32_t apply_crowd_steering(WorldView& view, float /*dt*/,
 
 uint32_t apply_local_avoidance(WorldView& view, float dt,
                                CommandBuffer& /*cmds*/) {
-    s_avoidance_neighbors = 0;
-    s_avoidance_adjusted  = 0;
+    enforce_crowd_context();
+    s_ctx->avoidance_neighbors = 0;
+    s_ctx->avoidance_adjusted  = 0;
     uint32_t count = 0;
 
     // Phase 1: snapshot all crowd agent velocities (post-steering,
     // pre-avoidance).  Every agent reads neighbors from this snapshot,
     // not from the live world, so iteration order does not matter.
-    s_vel_snapshot.clear();
+    s_ctx->vel_snapshot.clear();
     view.each<CrowdAgent, Velocity>(
         [](EntityId id, CrowdAgent&, Velocity& v) {
-            s_vel_snapshot[id.index] = {v.dx, v.dy};
+            s_ctx->vel_snapshot[id.index] = {v.dx, v.dy};
         });
 
     // Phase 2: compute and apply avoidance using the snapshot.
@@ -396,8 +414,8 @@ uint32_t apply_local_avoidance(WorldView& view, float dt,
 
             // Read own velocity from snapshot (not live) so that self
             // and neighbors use the same reference frame.
-            auto self_it = s_vel_snapshot.find(self.index);
-            if (self_it == s_vel_snapshot.end()) return;
+            auto self_it = s_ctx->vel_snapshot.find(self.index);
+            if (self_it == s_ctx->vel_snapshot.end()) return;
             float self_vx = self_it->second.first;
             float self_vy = self_it->second.second;
 
@@ -405,10 +423,10 @@ uint32_t apply_local_avoidance(WorldView& view, float dt,
             float steer_y = 0.0f;
             bool  adjusted = false;
 
-            s_grid.for_each_nearby(
+            s_ctx->grid.for_each_nearby(
                 pos.x, pos.y, avoid.radius, self,
                 [&](const SpatialGrid::Entry& e, float d2) {
-                    ++s_avoidance_neighbors;
+                    ++s_ctx->avoidance_neighbors;
 
                     float dist = std::sqrt(d2);
                     if (dist < 1e-6f) return;  // exact overlap handled by separation
@@ -418,8 +436,8 @@ uint32_t apply_local_avoidance(WorldView& view, float dt,
                     float rel_py = e.y - pos.y;
 
                     // Neighbor velocity from snapshot (simultaneous read).
-                    auto nb_it = s_vel_snapshot.find(e.id.index);
-                    if (nb_it == s_vel_snapshot.end()) return;
+                    auto nb_it = s_ctx->vel_snapshot.find(e.id.index);
+                    if (nb_it == s_ctx->vel_snapshot.end()) return;
                     float nb_vx = nb_it->second.first;
                     float nb_vy = nb_it->second.second;
 
@@ -474,8 +492,8 @@ uint32_t apply_local_avoidance(WorldView& view, float dt,
             // Navigation safety: reject dodge if the movement segment
             // would cross any blocked cell (DDA grid walk, not just
             // final-cell check).  This prevents wall-jump at large dt.
-            if (s_nav_grids && team.id < s_nav_grid_count) {
-                const BattlefieldGrid* grid = s_nav_grids[team.id];
+            if (s_ctx->nav_grids && team.id < s_ctx->nav_grid_count) {
+                const BattlefieldGrid* grid = s_ctx->nav_grids[team.id];
                 if (grid) {
                     float end_x = pos.x + new_vx * dt;
                     float end_y = pos.y + new_vy * dt;
@@ -489,7 +507,7 @@ uint32_t apply_local_avoidance(WorldView& view, float dt,
 
             vel.dx = new_vx;
             vel.dy = new_vy;
-            ++s_avoidance_adjusted;
+            ++s_ctx->avoidance_adjusted;
         });
     return count;
 }
@@ -506,10 +524,11 @@ uint32_t apply_local_avoidance(WorldView& view, float dt,
 
 uint32_t gather_melee_candidates(WorldView& view, float /*dt*/,
                                  CommandBuffer& /*cmds*/) {
-    s_melee_pairs.clear();
-    s_melee_valid_set.clear();
-    s_melee_bp_checks   = 0;
-    s_melee_pairs_count = 0;
+    enforce_crowd_context();
+    s_ctx->melee_pairs.clear();
+    s_ctx->melee_valid_set.clear();
+    s_ctx->melee_bp_checks   = 0;
+    s_ctx->melee_pairs_count = 0;
 
     uint32_t count = 0;
     view.each<CrowdAgent, Team, Position, AttackRange>(
@@ -517,17 +536,17 @@ uint32_t gather_melee_candidates(WorldView& view, float /*dt*/,
             Position& pos, AttackRange& range) {
             ++count;
 
-            s_melee_bp_checks += s_grid.for_each_nearby(
+            s_ctx->melee_bp_checks += s_ctx->grid.for_each_nearby(
                 pos.x, pos.y, range.range, self,
                 [&](const SpatialGrid::Entry& e, float /*d2*/) {
                     if (e.team == my_team.id) return;  // ally, skip
-                    s_melee_pairs.push_back({self, e.id});
-                    s_melee_valid_set.insert(
+                    s_ctx->melee_pairs.push_back({self, e.id});
+                    s_ctx->melee_valid_set.insert(
                         make_pair_key(self.index, e.id.index));
                 });
         });
 
-    s_melee_pairs_count = static_cast<uint32_t>(s_melee_pairs.size());
+    s_ctx->melee_pairs_count = static_cast<uint32_t>(s_ctx->melee_pairs.size());
     return count;
 }
 
@@ -547,9 +566,10 @@ uint32_t gather_melee_candidates(WorldView& view, float /*dt*/,
 //   - Does NOT modify Health -- that is resolve_damage's job.
 
 uint32_t attack_targets(WorldView& view, float dt, CommandBuffer& /*cmds*/) {
-    s_attacks_this_tick = 0;
-    s_melee_attacks     = 0;
-    s_hit_buffer.clear();
+    enforce_crowd_context();
+    s_ctx->attacks_this_tick = 0;
+    s_ctx->melee_attacks     = 0;
+    s_ctx->hit_buffer.clear();
 
     uint32_t count = 0;
     view.each<CrowdAgent, Target, AttackCooldown, AttackDamage>(
@@ -564,13 +584,13 @@ uint32_t attack_targets(WorldView& view, float dt, CommandBuffer& /*cmds*/) {
             // Broadphase gate: Target.entity must be confirmed in melee
             // range by gather_melee_candidates.
             auto key = make_pair_key(self.index, tgt.entity.index);
-            if (s_melee_valid_set.find(key) == s_melee_valid_set.end())
+            if (s_ctx->melee_valid_set.find(key) == s_ctx->melee_valid_set.end())
                 return;
 
-            s_hit_buffer.push_back({tgt.entity, dmg.damage});
+            s_ctx->hit_buffer.push_back({tgt.entity, dmg.damage});
             cd.remaining = cd.interval;
-            ++s_attacks_this_tick;
-            ++s_melee_attacks;
+            ++s_ctx->attacks_this_tick;
+            ++s_ctx->melee_attacks;
         });
     return count;
 }
@@ -583,8 +603,9 @@ uint32_t attack_targets(WorldView& view, float dt, CommandBuffer& /*cmds*/) {
 // HP is modified -- guarantees simultaneous resolution.
 
 uint32_t resolve_damage(WorldView& view, float /*dt*/, CommandBuffer& /*cmds*/) {
+    enforce_crowd_context();
     uint32_t count = 0;
-    for (const auto& hit : s_hit_buffer) {
+    for (const auto& hit : s_ctx->hit_buffer) {
         auto* hp = view.get<Health>(hit.target);
         if (hp) {
             hp->current -= hit.damage;
@@ -600,14 +621,15 @@ uint32_t resolve_damage(WorldView& view, float /*dt*/, CommandBuffer& /*cmds*/) 
 // Queue deferred destruction for agents whose health dropped to zero.
 
 uint32_t remove_dead(WorldView& view, float /*dt*/, CommandBuffer& cmds) {
-    s_deaths_this_tick = 0;
+    enforce_crowd_context();
+    s_ctx->deaths_this_tick = 0;
     uint32_t count = 0;
     view.each<CrowdAgent, Health>(
         [&](EntityId id, CrowdAgent&, Health& hp) {
             ++count;
             if (hp.current <= 0.0f) {
                 cmds.destroy(id);
-                ++s_deaths_this_tick;
+                ++s_ctx->deaths_this_tick;
             }
         });
     return count;
@@ -624,7 +646,8 @@ uint32_t remove_dead(WorldView& view, float /*dt*/, CommandBuffer& cmds) {
 
 uint32_t apply_separation(WorldView& view, float /*dt*/,
                           CommandBuffer& /*cmds*/) {
-    s_separation_pairs = 0;
+    enforce_crowd_context();
+    s_ctx->separation_pairs = 0;
     uint32_t count = 0;
     view.each<CrowdAgent, Position, Velocity, Separation, MoveSpeed, BehaviorLod>(
         [&](EntityId self, CrowdAgent&, Position& pos,
@@ -635,7 +658,7 @@ uint32_t apply_separation(WorldView& view, float /*dt*/,
             float push_x = 0.0f;
             float push_y = 0.0f;
 
-            s_separation_pairs += s_grid.for_each_nearby(
+            s_ctx->separation_pairs += s_ctx->grid.for_each_nearby(
                 pos.x, pos.y, sep.radius, self,
                 [&](const SpatialGrid::Entry& e, float d2) {
                     float dist = std::sqrt(d2);
@@ -669,6 +692,68 @@ uint32_t apply_separation(WorldView& view, float /*dt*/,
                 vel.dx *= scale;
                 vel.dy *= scale;
             }
+        });
+    return count;
+}
+
+// -----------------------------------------------------------------------
+//  clamp_blocked_positions
+// -----------------------------------------------------------------------
+// Post-integration safety: if an agent ended up inside a blocked nav cell,
+// push it back to the center of the nearest free neighbor cell.
+// Only active when battlefield grids are installed.
+// This is the hard wall constraint that prevents position overshoot.
+
+uint32_t clamp_blocked_positions(WorldView& view, float /*dt*/,
+                                 CommandBuffer& /*cmds*/) {
+    enforce_crowd_context();
+    if (!s_ctx->nav_grids || s_ctx->nav_grid_count == 0) return 0;
+
+    uint32_t count = 0;
+    view.each<CrowdAgent, Team, Position, Velocity>(
+        [&](EntityId, CrowdAgent&, Team& team, Position& pos, Velocity& vel) {
+            if (team.id >= s_ctx->nav_grid_count) return;
+            const BattlefieldGrid* grid = s_ctx->nav_grids[team.id];
+            if (!grid) return;
+
+            int cx, cy;
+            grid->world_to_cell(pos.x, pos.y, cx, cy);
+            if (!grid->is_blocked(cx, cy)) return;
+
+            ++count;
+
+            // Find nearest free neighbor among the 4 cardinal directions.
+            static constexpr int dx4[] = {-1, 1, 0, 0};
+            static constexpr int dy4[] = {0, 0, -1, 1};
+            float best_d2 = 1e18f;
+            float best_x  = pos.x;
+            float best_y  = pos.y;
+            bool  found   = false;
+
+            for (int d = 0; d < 4; ++d) {
+                int nx = cx + dx4[d];
+                int ny = cy + dy4[d];
+                if (grid->is_blocked(nx, ny)) continue;
+                float wx, wy;
+                grid->cell_to_world(nx, ny, wx, wy);
+                float ddx = wx - pos.x;
+                float ddy = wy - pos.y;
+                float d2  = ddx * ddx + ddy * ddy;
+                if (!found || d2 < best_d2) {
+                    best_d2 = d2;
+                    best_x  = wx;
+                    best_y  = wy;
+                    found   = true;
+                }
+            }
+
+            if (found) {
+                pos.x = best_x;
+                pos.y = best_y;
+            }
+            // Zero velocity to prevent repeated penetration next tick.
+            vel.dx = 0.0f;
+            vel.dy = 0.0f;
         });
     return count;
 }

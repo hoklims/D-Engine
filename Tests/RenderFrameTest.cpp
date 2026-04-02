@@ -513,6 +513,51 @@ static void test_has_target_ally() {
 }
 
 // =================================================================
+//  Full-crowd bounds are computed even beyond k_max_render_agents
+// =================================================================
+
+static void test_crowd_bounds_beyond_cap() {
+    de::World world;
+
+    // Spawn more agents than k_max_render_agents.
+    // Use a small but > 4096 count.  Each agent is a crowd entity with
+    // all required components.  Spread team 0 at x=-100, team 1 at x=+100.
+    const uint32_t per_team = de::k_max_render_agents / 2 + 100;  // 2148 per team = 4296 total
+    for (uint32_t t = 0; t < 2; ++t) {
+        float bx = (t == 0) ? -100.0f : 100.0f;
+        for (uint32_t i = 0; i < per_team; ++i) {
+            de::EntityId e = world.create();
+            world.set(e, de::CrowdAgent{});
+            world.set(e, de::Team{static_cast<uint8_t>(t)});
+            world.set(e, de::Position{bx, static_cast<float>(i) * 0.5f});
+            world.set(e, de::Velocity{});
+            world.set(e, de::DesiredDirection{});
+            world.set(e, de::Target{});
+            world.set(e, de::Health{100.0f, 100.0f});
+            world.set(e, de::BehaviorLod{});
+        }
+    }
+
+    de::RenderFrame frame;
+    de::extract_render_frame(world, 0, 0, frame);
+
+    uint32_t total = per_team * 2;
+    check(frame.agent_count == total,
+          "bounds-cap: agent_count reflects all agents");
+    check(frame.extracted_count == de::k_max_render_agents,
+          "bounds-cap: extracted_count capped at k_max");
+
+    // Full-crowd bounds must cover both teams even though some agents
+    // were not extracted into the agents[] array.
+    check(frame.has_crowd_bounds,
+          "bounds-cap: has_crowd_bounds is true");
+    check(frame.crowd_min_x <= -100.0f,
+          "bounds-cap: crowd_min_x covers team 0 at x=-100");
+    check(frame.crowd_max_x >= 100.0f,
+          "bounds-cap: crowd_max_x covers team 1 at x=+100");
+}
+
+// =================================================================
 
 int main() {
     test_extract_basic();
@@ -533,6 +578,7 @@ int main() {
     test_has_target_invalid_entity();
     test_has_target_self();
     test_has_target_ally();
+    test_crowd_bounds_beyond_cap();
 
     std::printf("\nRenderFrameTest: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail;

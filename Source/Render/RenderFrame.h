@@ -33,6 +33,15 @@ struct RenderFrame {
     uint32_t agent_count     = 0;   // total crowd agents in world
     uint32_t extracted_count = 0;   // actually extracted (capped at k_max_render_agents)
     CrowdRenderItem agents[k_max_render_agents] = {};
+
+    // Bounding box of ALL crowd agents (not just extracted).
+    // Used by auto-frame camera to reflect the true extent of the crowd
+    // even when agent_count > k_max_render_agents.
+    float crowd_min_x = 0.0f;
+    float crowd_max_x = 0.0f;
+    float crowd_min_y = 0.0f;
+    float crowd_max_y = 0.0f;
+    bool  has_crowd_bounds = false;
 };
 
 // Extract crowd agents from the World into a RenderFrame.

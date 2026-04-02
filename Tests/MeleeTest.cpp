@@ -10,6 +10,18 @@
 static int g_pass = 0;
 static int g_fail = 0;
 
+// RAII context for tests that call crowd systems directly.
+struct TestCrowdCtx {
+    de::CrowdTickContext* ctx;
+    TestCrowdCtx() : ctx(de::create_crowd_context()) {
+        de::install_crowd_context(ctx);
+    }
+    ~TestCrowdCtx() {
+        de::destroy_crowd_context(ctx);
+        de::install_crowd_context(nullptr);
+    }
+};
+
 static void check(bool cond, const char* name) {
     if (cond) {
         ++g_pass;
@@ -41,8 +53,8 @@ static void test_sparse_melee() {
           "sparse: no melee pairs when teams far apart");
     check(snap.melee_attacks_this_tick == 0,
           "sparse: no melee attacks when teams far apart");
-    check(snap.melee_broadphase_checks == 0,
-          "sparse: broadphase checks zero when nobody in range");
+    // broadphase_checks may be > 0 from allies at exactly attack_range
+    // distance (agent_spread == attack_range), but no enemy pairs formed.
 }
 
 // =================================================================
@@ -79,6 +91,7 @@ static void test_dense_melee() {
 // =================================================================
 
 static void test_melee_enemies_only() {
+    TestCrowdCtx guard;
     de::World world;
     de::CommandBuffer cmds;
 
@@ -134,6 +147,7 @@ static void test_melee_enemies_only() {
 // =================================================================
 
 static void test_melee_produces_attack() {
+    TestCrowdCtx guard;
     de::World world;
     de::CommandBuffer cmds;
 
@@ -202,6 +216,7 @@ static void test_melee_produces_attack() {
 // =================================================================
 
 static void test_simultaneous_combat() {
+    TestCrowdCtx guard;
     de::World world;
     de::CommandBuffer cmds;
 
@@ -360,8 +375,8 @@ static void test_existing_crowd_no_regression() {
     auto snap = sim.snapshot();
     check(snap.crowd_agent_count == 20,
           "regression: all 20 agents alive after 10 ticks");
-    check(snap.system_count == 13,
-          "regression: 13 systems registered (with MeleeBroadphase)");
+    check(snap.system_count == 14,
+          "regression: 14 systems registered (with ClampBlocked)");
 }
 
 // =================================================================
@@ -370,6 +385,7 @@ static void test_existing_crowd_no_regression() {
 // =================================================================
 
 static void test_attack_respects_target() {
+    TestCrowdCtx guard;
     de::World world;
     de::CommandBuffer cmds;
 
@@ -465,6 +481,7 @@ static void test_attack_respects_target() {
 // =================================================================
 
 static void test_zero_interval_single_hit() {
+    TestCrowdCtx guard;
     de::World world;
     de::CommandBuffer cmds;
 
@@ -539,6 +556,7 @@ static void test_zero_interval_single_hit() {
 // =================================================================
 
 static void test_simultaneous_with_target_gate() {
+    TestCrowdCtx guard;
     de::World world;
     de::CommandBuffer cmds;
 
@@ -600,6 +618,75 @@ static void test_simultaneous_with_target_gate() {
 }
 
 // =================================================================
+//  Exact attack range boundary: agent stops AND broadphase includes
+// =================================================================
+
+static void test_exact_range_boundary() {
+    TestCrowdCtx guard;
+    de::World world;
+    de::CommandBuffer cmds;
+
+    // Attacker at origin, enemy at exactly attack_range distance.
+    float range = 3.0f;
+    de::EntityId a = world.create();
+    world.set(a, de::CrowdAgent{});
+    world.set(a, de::Team{0});
+    world.set(a, de::Position{0.0f, 0.0f});
+    world.set(a, de::Velocity{});
+    world.set(a, de::MoveSpeed{3.0f});
+    world.set(a, de::Target{});
+    world.set(a, de::DesiredDirection{});
+    world.set(a, de::Health{100.0f, 100.0f});
+    world.set(a, de::AttackRange{range});
+    world.set(a, de::AttackDamage{10.0f});
+    world.set(a, de::AttackCooldown{0.0f, 1.0f});
+    world.set(a, de::BattleGoal{10.0f, 0.0f});
+    world.set(a, de::EngageRadius{15.0f});
+    world.set(a, de::Separation{0.8f, 5.0f});
+    world.set(a, de::BehaviorLod{});
+
+    // Enemy placed at EXACTLY range distance on x-axis.
+    de::EntityId e = world.create();
+    world.set(e, de::CrowdAgent{});
+    world.set(e, de::Team{1});
+    world.set(e, de::Position{range, 0.0f});
+    world.set(e, de::Velocity{});
+    world.set(e, de::MoveSpeed{3.0f});
+    world.set(e, de::Target{});
+    world.set(e, de::DesiredDirection{});
+    world.set(e, de::Health{100.0f, 100.0f});
+    world.set(e, de::AttackRange{range});
+    world.set(e, de::AttackDamage{10.0f});
+    world.set(e, de::AttackCooldown{0.0f, 1.0f});
+    world.set(e, de::BattleGoal{-10.0f, 0.0f});
+    world.set(e, de::EngageRadius{15.0f});
+    world.set(e, de::Separation{0.8f, 5.0f});
+    world.set(e, de::BehaviorLod{});
+
+    de::reset_crowd_tick_counters();
+    de::set_crowd_tick_count(0);
+    de::WorldView view(world);
+
+    de::select_targets(view, 0.016f, cmds);
+    de::gather_melee_candidates(view, 0.016f, cmds);
+
+    // At exact range, broadphase must include the pair (no dead zone).
+    check(de::melee_pairs_this_tick() >= 2,
+          "exact_range: broadphase includes agents at exact attack range");
+
+    de::attack_targets(view, 0.016f, cmds);
+    de::resolve_damage(view, 0.016f, cmds);
+
+    // Both should have taken damage (both are at exact range of each other).
+    auto* hp_a = view.get<de::Health>(a);
+    auto* hp_e = view.get<de::Health>(e);
+    check(hp_a && hp_a->current < 100.0f,
+          "exact_range: agent a attacked at exact range");
+    check(hp_e && hp_e->current < 100.0f,
+          "exact_range: enemy e attacked at exact range");
+}
+
+// =================================================================
 
 int main() {
     test_sparse_melee();
@@ -613,6 +700,7 @@ int main() {
     test_attack_respects_target();
     test_zero_interval_single_hit();
     test_simultaneous_with_target_gate();
+    test_exact_range_boundary();
 
     std::printf("\nMeleeTest: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail > 0 ? 1 : 0;

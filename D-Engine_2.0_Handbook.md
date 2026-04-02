@@ -5,7 +5,7 @@
 > Il remplace, pour cette generation, le role du handbook actuel.
 > Les autres docs 2.0 detaillent et executent cette vision; ils ne doivent pas la contredire.
 
-Last updated: 2026-04-01
+Last updated: 2026-04-02
 
 -------------------------------------------------------------------------------
 
@@ -307,8 +307,10 @@ Priorites:
 - capture et relecture d'inputs,
 - hash de simulation par tick,
 - comparaison headless de sequences de hash,
+- benchmark headless structurel et budget,
 - contrats de budget explicites,
 - reponse budget-aware visible et reversible,
+- HUD runtime structure et lisible,
 - timeline de budgets,
 - affichage des tiers de LOD,
 - compteur d'agents actifs,
@@ -353,23 +355,39 @@ Checkpoint actuel:
 - Phase 0 terminee
 - Phase 1 largement en place
 - Phase 2 en cours avance
-- Phase 3 a 5 non engagees
+- Phase 3 demarree
+- Phase 4 a 5 non engagees
 
 En clair:
 
-- le moteur headless crowd-first existe deja,
-- la foule sait cibler, se deplacer, se separer, combattre et contourner des
-  obstacles statiques,
+- le moteur crowd-first n'est plus seulement headless,
+- la foule sait cibler, se deplacer, s'eviter localement, combattre et
+  contourner des obstacles statiques,
 - le runtime crowd sait aussi degrader son cout via un premier LOD
   comportemental a 4 tiers, pilote par un centre de bataille explicite,
 - le combat crowd dispose aussi d'un premier broadphase melee dedie et
   telemetre,
+- l'avoidance locale utilise maintenant un premier steering anticipatoire par
+  TTC avec biais lateral, snapshot de vitesses simultane et garde-fou nav
+  segmentaire sur battlefield,
 - la preuve de simulation existe deja sous forme de hash par tick,
   historique recent et comparaison headless,
 - les budgets runtime sont maintenant explicites et pilotent une premiere
   degradation budget-aware avec hysteresis,
-- le rendu crowd-first, le replay complet des inputs et les jobs restent
-  devant nous.
+- un premier pipeline visuel existe deja via `RenderFrame`, renderer DX12
+  minimal, camera ortho auto-framee, crowd instanciee, world debug pass,
+  culling CPU render-side, overlay runtime et HUD debug structure,
+- `DEngine.exe` est maintenant une build interne testable avec pause, step,
+  reset, switch de scene, presets demo/stress, camera debug et feedback HUD,
+- le runtime dispose aussi de presets de stress et d'un benchmark headless avec
+  comparaison structurelle separee des signaux budget/perf,
+- la presentation reste encore debug-grade: silhouettes kite orientees, sol,
+  grille, axes et HUD, sans assets ni habillage visuel credibles,
+- le lifecycle Win32/runtime a ete stabilise pour supprimer la flakiness des
+  tests de reinit de fenetre dans le meme process,
+- le replay complet des inputs, les jobs, la perf renderer active-path, le
+  vrai rendu crowd scalable GPU-first et une presentation de demo plus lisible
+  restent devant nous.
 
 -------------------------------------------------------------------------------
 

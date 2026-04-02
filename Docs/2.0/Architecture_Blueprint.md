@@ -19,7 +19,7 @@ Le CPU decide. Le GPU absorbe l'echelle.
 
 ## Snapshot actuel
 
-Etat reel de la branche au 2026-04-01:
+Etat reel de la branche au 2026-04-02:
 
 - runtime Win32 minimal en place,
 - tick fixe, timeline et telemetry CPU en place,
@@ -38,6 +38,22 @@ Etat reel de la branche au 2026-04-01:
 - comparaison headless de sequences de hash en place,
 - budget contracts explicites en place,
 - reponse budget-aware avec hysteresis en place,
+- extraction read-only de `RenderFrame` depuis l'etat publie en place,
+- renderer DX12 minimal en place,
+- camera orthographique auto-framee en place,
+- crowd instanciee debug en place,
+- world debug pass en place,
+- overlay debug runtime en place,
+- HUD debug structure en place (`Hidden` / `Compact` / `Full`),
+- silhouette crowd orientee en place,
+- presets demo et stress en place,
+- benchmark headless structurel / budget en place,
+- avoidance locale TTC avec biais lateral en place,
+- snapshot de vitesses avoidance + garde-fou nav segmentaire en place,
+- culling CPU render-side en place avec `RenderFrame` pre-cull preserve,
+- `RenderStats` en place,
+- debug controls runtime en place,
+- lifecycle Win32/Engine stabilise pour les reinit de fenetre en tests,
 - tests dedies runtime, ECS, crowd, navigation, LOD, melee, hash et budget
   en place.
 
@@ -46,7 +62,11 @@ Ce qui reste hors du code aujourd'hui:
 - job system,
 - allocateurs temps reel,
 - capture/replay complet des inputs,
-- rendu DX12 et extraction de frame crowd-first.
+- perf renderer active-path plus serieuse,
+- presentation/demo polish,
+- culling GPU,
+- skinning compute,
+- VAT et far-field.
 
 ## Couches
 
@@ -105,9 +125,11 @@ Boucle actuellement implementee:
 3. `SimState::tick`,
 4. apply des commandes differees,
 5. hash de simulation + budgets + reponse budget-aware,
-6. snapshot runtime et telemetry,
-7. `render` placeholder,
-8. `end_frame`.
+6. extraction de `RenderFrame`,
+7. auto-framing camera et debug controls runtime,
+8. rendu DX12 minimal,
+9. snapshot runtime et telemetry,
+10. `end_frame`.
 
 Pipeline crowd actuellement implementee:
 
@@ -117,12 +139,13 @@ Pipeline crowd actuellement implementee:
 4. `ComputeDesiredMove`,
 5. `ApplyCrowdSteer`,
 6. `ApplySeparation`,
-7. `MeleeBroadphase`,
-8. `AttackTargets`,
-9. `ResolveDamage`,
-10. `RemoveDead`,
-11. `IntegrateVelocity`,
-12. `IntegratePosition`.
+7. `ApplyLocalAvoidance`,
+8. `MeleeBroadphase`,
+9. `AttackTargets`,
+10. `ResolveDamage`,
+11. `RemoveDead`,
+12. `IntegrateVelocity`,
+13. `IntegratePosition`.
 
 Boucle cible a moyen terme:
 
@@ -195,8 +218,10 @@ Choix cible:
 
 ### Avoidance
 
-- separation locale soft aujourd'hui,
+- separation locale soft + avoidance anticipatoire TTC aujourd'hui,
 - voisinage borne via grille aujourd'hui,
+- snapshot de vitesses de reference aujourd'hui,
+- garde-fou nav segmentaire sur battlefield aujourd'hui,
 - LOD comportemental crowd aujourd'hui,
 - ORCA ou variante compatible budget plus tard,
 - precision degressive avec la distance plus tard.

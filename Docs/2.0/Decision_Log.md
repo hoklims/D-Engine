@@ -303,3 +303,148 @@ Pourquoi:
 - il fallait commencer a agir sur les budgets, pas seulement les mesurer,
 - la separation `applied` / `pending` evite toute ambiguite de contrat,
 - la normalisation immediate supprime les etats stale dans l'API publique.
+
+## DL-024 - Extraction de frame read-only et renderer DX12 minimal
+
+Decision:
+
+- la simulation publie son etat vers le rendu via une `RenderFrame` read-only,
+- le premier renderer DX12 reste minimal, orthographique et debug-grade,
+- le moteur reste capable de tourner en headless si le renderer n'est pas
+  disponible.
+
+Pourquoi:
+
+- il fallait ouvrir la visibilite runtime sans polluer le contrat de simulation,
+- la separation `SimState -> RenderFrame -> Renderer` garde le hot path plus
+  defendable,
+- le fallback headless preserve la testabilite et les tests non graphiques.
+
+## DL-025 - Build interne testable avant presentation riche
+
+Decision:
+
+- `DEngine.exe` expose des debug controls runtime minimaux: pause, single-step,
+  reset, switch de scene et camera debug,
+- le single-step vaut exactement un tick,
+- reset et switch de scene repartent sans reliquat d'accumulateur fixed-step.
+
+Pourquoi:
+
+- avant un vrai habillage visuel, il fallait rendre le build manipulable par un
+  humain,
+- une V1 interne testable exige des controles predictibles,
+- cela transforme le moteur en banc de test utile, pas seulement en demo
+  technique passive.
+
+## DL-026 - Presentation debug minimale avant vrai habillage visuel
+
+Decision:
+
+- le rendu 2.0 ouvre d'abord une presentation strictement debug:
+  world debug pass, overlay runtime et silhouettes crowd orientees,
+- aucun systeme d'UI generaliste ni pipeline d'assets n'est ouvert a ce stade,
+- la lisibilite prime sur la richesse visuelle.
+
+Pourquoi:
+
+- il fallait rendre `DEngine.exe` observable sans debugger,
+- cela permet d'iterer sur le runtime crowd et les tests visuels avec un cout
+  technique tres faible,
+- le renderer reste une fondation defendable avant culling, assets et LOD
+  visuels plus riches.
+
+## DL-027 - Signal visuel crowd derive d'un contrat tactique honnete
+
+Decision:
+
+- l'orientation visuelle crowd suit `Velocity > DesiredDirection > (0,1)`,
+- le boost visuel crowd repose sur un vrai signal `has_target`,
+- `has_target` n'est vrai que pour une cible ennemie vivante, non-self.
+
+Pourquoi:
+
+- la silhouette devait rester lisible meme a vitesse nulle,
+- un signal visuel flou sur l'engagement aurait rendu le rendu trompeur,
+- cela aligne le rendu debug avec les contrats crowd deja presentes dans le
+  runtime.
+
+## DL-028 - Pas de `PostQuitMessage` dans le lifecycle fenetre 2.0
+
+Decision:
+
+- la couche `Window` 2.0 n'utilise pas `PostQuitMessage`,
+- `destroy()` draine tous les messages restants de la thread queue,
+- `create()` pre-draine aussi la queue par defense-in-depth.
+
+Pourquoi:
+
+- le moteur utilise `PeekMessage` et ses propres flags `open_` / `running_`,
+  pas un loop `GetMessage`,
+- le quit flag Win32 rendait les tests runtime flaky lors des reinit de fenetre
+  dans le meme process,
+- la stabilite des tests runtime passait avant toute sophistication plateforme.
+
+## DL-029 - Presets demo/stress et benchmark headless avant presentation riche
+
+Decision:
+
+- les presets de demo et de stress restent des tables simples cote runtime,
+- le benchmark headless expose une comparaison structurelle separee d'une
+  comparaison budget/perf dependante du wall-clock.
+
+Pourquoi:
+
+- il fallait comparer les runs avant d'ouvrir une perf renderer plus serieuse,
+- la branche avait besoin de scenes lisibles pour l'executable et de scenes de
+  charge pour les regressions,
+- separer structurel et budget rend le contrat de benchmark plus honnete.
+
+## DL-030 - Avoidance locale TTC, simultanee et nav-safe
+
+Decision:
+
+- l'avoidance locale 2.0 utilise un premier steering anticipatoire par
+  Time-To-Closest-Approach avec biais lateral deterministe,
+- les vitesses voisines sont lues depuis un snapshot commun,
+- un dodge est rejete s'il traverse une cellule bloquee sur battlefield.
+
+Pourquoi:
+
+- il fallait rendre les rencontres de groupes plus credibles sans ORCA complet,
+- la lecture simultanee supprime une dependance malsaine a l'ordre d'iteration,
+- la surete nav devait rester compatible avec le contrat battlefield.
+
+## DL-031 - Culling render-side sans muter `RenderFrame`
+
+Decision:
+
+- le culling CPU par camera ortho reste strictement render-side,
+- `render_frame()` publie un snapshot d'extraction pre-cull,
+- un buffer de travail separe est compacte puis soumis au renderer.
+
+Pourquoi:
+
+- la separation simulation / rendu ne devait pas etre re-cassee par la
+  scalabilite render,
+- le chemin headless et les benchmarks devaient continuer a voir l'extraction
+  complete,
+- les compteurs render devaient distinguer extraction, culling et soumission.
+
+## DL-032 - HUD debug structure et compteurs honnetes
+
+Decision:
+
+- l'overlay runtime evolue vers un HUD structure avec modes `Hidden`,
+  `Compact` et `Full`,
+- `SKIPPED` est reserve aux vraies frames perdues,
+- le headless affiche `Render: OFF`,
+- `cap` est distingue de `RenderStats.dropped_count`,
+- le timing HUD est affiche comme `CPU:` quand il ne represente qu'une
+  pre-somme CPU.
+
+Pourquoi:
+
+- il fallait rendre `DEngine.exe` lisible sans ouvrir un framework UI lourd,
+- les compteurs publics ne devaient plus diverger silencieusement,
+- un HUD defendable vaut mieux qu'une sur-promesse de telemetrie.

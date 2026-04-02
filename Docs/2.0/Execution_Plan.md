@@ -7,17 +7,22 @@ nouvelle generation du moteur.
 
 ## Snapshot d'execution
 
-Etat au 2026-04-01:
+Etat au 2026-04-02:
 
 - l'etape de cadrage est terminee,
 - le socle runtime est largement pose,
-- la simulation crowd existe deja sous forme jouable headless,
+- la simulation crowd existe deja sous forme jouable et visible en build debug,
 - la navigation battlefield obstacle-aware existe deja en version statique,
 - le premier LOD comportemental crowd est en place,
 - le premier broadphase melee crowd est en place,
 - la preuve minimale de simulation existe deja via hash par tick,
 - les budget contracts et la premiere reponse budget-aware sont en place,
-- le rendu crowd-first n'a pas encore commence.
+- le pipeline visuel crowd-first existe deja en version minimale,
+- les presets demo/stress et le benchmark headless existent deja,
+- le culling CPU render-side et le HUD debug structure sont en place,
+- l'avoidance locale a deja franchi un premier cap de credibilite,
+- la build est maintenant testable en interne, mais sa presentation reste
+  debug-grade.
 
 ## Etape 1 - Cadrage
 
@@ -54,7 +59,7 @@ Ce qui manque encore:
 - job system,
 - allocateurs temps reel,
 - replay complet des inputs,
-- DX12 minimal.
+- outillage replay plus riche.
 
 ## Etape 3 - Simulation de foule
 
@@ -75,6 +80,7 @@ Ce qui existe deja:
 - `BattleGoal` + `EngageRadius`,
 - combat simultane avec morts differees,
 - separation locale,
+- avoidance TTC avec snapshot de vitesses et nav safety DDA,
 - `BattlefieldGrid` statique + BFS integration field,
 - LOD comportemental a 4 tiers avec centre explicite,
 - broadphase melee dedie avec telemetry de base,
@@ -83,19 +89,36 @@ Ce qui existe deja:
 
 Ce qui reste a faire dans cette etape:
 
-- avoidance plus credible,
 - capture/replay complet au-dela du hash,
-- budgets gameplay plus riches et plus proches du ressenti joueur.
+- budgets gameplay plus riches et plus proches du ressenti joueur,
+- avoidance melee plus expressive si le vertical slice l'exige.
 
 ## Etape 4 - Rendu crowd-first
 
-Statut: non demarree
+Statut: demarree
 
-- DX12 minimal,
-- upload et extraction de frame,
+Ce qui existe deja:
+
+- extraction de `RenderFrame` depuis l'etat publie,
+- renderer DX12 minimal,
+- camera ortho auto-framee,
+- crowd instanciee debug,
+- world debug pass (sol, grille, axes),
+- overlay debug runtime + HUD structure,
+- silhouette crowd orientee en kite,
+- culling CPU render-side avec `RenderFrame` pre-cull preserve,
+- `RenderStats`,
+- debug controls runtime pour la build interne,
+- lifecycle `Window` / `Engine` stabilise pour les reinit,
+- presets demo/stress et benchmark headless.
+
+Ce qui reste a faire:
+
+- presentation/demo polish,
+- rendu crowd plus credible qu'une simple silhouette debug,
+- perf renderer active-path plus serieuse,
+- culling GPU,
 - skinning compute,
-- culling,
-- submission,
 - LOD visuels,
 - VAT.
 
@@ -114,12 +137,12 @@ Statut: non demarree
 
 Ordre recommande a court terme:
 
-1. ouvrir le pipeline visuel crowd-first:
-   extraction de frame, DX12 minimal, premiere visibilite runtime;
-2. rendre la foule visible a l'ecran:
-   rendu crowd-first, batching, premiers LOD visuels;
-3. poursuivre le durcissement simulation:
-   avoidance plus credible, replay complet des inputs, telemetry gameplay plus riche.
+1. rendre la build plus lisible comme demo:
+   polish de presentation, lecture plus claire des groupes, HUD plus utile;
+2. rendre le renderer actif plus defendable sous charge:
+   perf render, timings GPU, culling GPU a terme;
+3. poursuivre le durcissement simulation et outil:
+   replay complet des inputs, telemetry gameplay plus riche, stress render/perf.
 
 ## Criteres de pilotage
 

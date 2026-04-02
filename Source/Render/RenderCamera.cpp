@@ -43,27 +43,18 @@ RenderCamera auto_frame_crowd(const RenderFrame& frame, float aspect) {
     RenderCamera cam;
     cam.aspect = (aspect > 0.0f) ? aspect : 1.0f;
 
-    if (frame.extracted_count == 0) {
+    if (!frame.has_crowd_bounds) {
         cam.center_x   = 0.0f;
         cam.center_y   = 0.0f;
         cam.half_width = k_min_half_width;
         return cam;
     }
 
-    // Compute bounding box of all extracted agents.
-    float min_x = frame.agents[0].x;
-    float max_x = frame.agents[0].x;
-    float min_y = frame.agents[0].y;
-    float max_y = frame.agents[0].y;
-
-    for (uint32_t i = 1; i < frame.extracted_count; ++i) {
-        float ax = frame.agents[i].x;
-        float ay = frame.agents[i].y;
-        if (ax < min_x) min_x = ax;
-        if (ax > max_x) max_x = ax;
-        if (ay < min_y) min_y = ay;
-        if (ay > max_y) max_y = ay;
-    }
+    // Use full-crowd bounding box (covers ALL agents, not just extracted).
+    float min_x = frame.crowd_min_x;
+    float max_x = frame.crowd_max_x;
+    float min_y = frame.crowd_min_y;
+    float max_y = frame.crowd_max_y;
 
     cam.center_x = (min_x + max_x) * 0.5f;
     cam.center_y = (min_y + max_y) * 0.5f;

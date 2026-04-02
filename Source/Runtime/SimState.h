@@ -12,6 +12,8 @@
 
 namespace de {
 
+struct CrowdTickContext;  // defined in CrowdSystems.cpp, owned by SimState
+
 static constexpr uint32_t k_max_sim_systems  = 18;
 static constexpr uint32_t k_system_name_max  = 32;
 static constexpr uint32_t k_max_teams        = 4;
@@ -234,6 +236,17 @@ struct BattlefieldConfig {
 struct SimState {
     World world;
 
+    SimState() = default;
+    ~SimState();
+
+    // Non-copiable, non-movable: owns a CrowdTickContext and contains
+    // fixed-size arrays (pipeline_, nav_grids_) with internal pointers
+    // that a partial move would silently invalidate.
+    SimState(const SimState&)            = delete;
+    SimState& operator=(const SimState&) = delete;
+    SimState(SimState&&)                 = delete;
+    SimState& operator=(SimState&&)      = delete;
+
     void bootstrap();
     void bootstrap_crowd();
     void bootstrap_crowd(const CrowdConfig& cfg);
@@ -306,6 +319,7 @@ private:
     float                   lod_base_t1_ = 30.0f;
     float                   lod_base_t2_ = 60.0f;
     float                   lod_base_t3_ = 100.0f;
+    CrowdTickContext*       crowd_ctx_   = nullptr;
 
     void register_systems();
     void register_crowd_systems();

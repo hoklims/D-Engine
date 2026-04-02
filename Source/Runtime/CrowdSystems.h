@@ -9,6 +9,25 @@
 
 namespace de {
 
+// Opaque per-instance state for the crowd systems pipeline.
+// Owned by SimState, installed before each tick via install_crowd_context().
+// Replaces file-scope statics so that multiple SimState instances are isolated.
+struct CrowdTickContext;
+
+CrowdTickContext* create_crowd_context();
+void              destroy_crowd_context(CrowdTickContext* ctx);
+
+// Install the active context.  Must be called before any crowd system
+// runs.  Only one context is active at a time (single-threaded).
+void              install_crowd_context(CrowdTickContext* ctx);
+
+// Returns true if a CrowdTickContext is currently installed.
+// Useful for test assertions without triggering the fatal guard.
+bool              has_crowd_context();
+
+// Returns true if the given context is the currently installed one.
+bool              is_active_crowd_context(const CrowdTickContext* ctx);
+
 // Crowd combat contract -- alive-at-tick-start + simultaneous damage
 //
 // Tick entry:
@@ -116,6 +135,12 @@ uint32_t remove_dead(WorldView& view, float dt, CommandBuffer& cmds);
 // Soft local separation: push agents apart when within personal space.
 // Runs after ApplyCrowdSteer so velocity already carries pursuit intent.
 uint32_t apply_separation(WorldView& view, float dt, CommandBuffer& cmds);
+
+// Hard wall constraint: if position integration moved an agent into a
+// blocked nav cell, push it to the nearest free neighbor and zero velocity.
+// Only active when battlefield grids are installed.  Must run AFTER
+// IntegratePosition.
+uint32_t clamp_blocked_positions(WorldView& view, float dt, CommandBuffer& cmds);
 
 // Per-tick counters (reset at the start of each tick).
 uint32_t crowd_attacks_this_tick();

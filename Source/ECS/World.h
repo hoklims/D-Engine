@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <functional>
 #include <tuple>
 #include <vector>
@@ -66,6 +68,25 @@ private:
 
     // --- internal helpers ------------------------------------------------
     uint32_t iterating_ = 0;
+
+    // RAII guard for iterating_ counter.  Exception-safe.
+    struct IterationGuard {
+        uint32_t& counter;
+        explicit IterationGuard(uint32_t& c) : counter(c) { ++counter; }
+        ~IterationGuard() { --counter; }
+        IterationGuard(const IterationGuard&) = delete;
+        IterationGuard& operator=(const IterationGuard&) = delete;
+    };
+
+    // Fatal check active in ALL builds (not just Debug).
+    void enforce_not_iterating() const {
+        if (iterating_ > 0) {
+            std::fprintf(stderr,
+                "FATAL: structural ECS mutation during iteration\n");
+            std::fflush(stderr);
+            std::abort();
+        }
+    }
 
     Archetype&  archetype_of(EntityId id);
     Record&     record_of(EntityId id);
@@ -170,7 +191,7 @@ const T* World::get(EntityId id) const {
 
 template <typename... Cs, typename F>
 void World::each(F&& func) {
-    ++iterating_;
+    IterationGuard guard(iterating_);
     for (auto& arch : archetypes_) {
         if (arch.count == 0) continue;
 
@@ -196,7 +217,6 @@ void World::each(F&& func) {
                  std::get<Cs*>(bases)[row]...);
         }
     }
-    --iterating_;
 }
 
 }  // namespace de
