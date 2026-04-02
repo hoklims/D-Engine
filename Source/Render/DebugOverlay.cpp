@@ -35,6 +35,7 @@ void extract_debug_overlay(
     uint32_t    culled_count,
     uint32_t    dropped_count,
     bool        frame_skipped,
+    bool        renderer_active,
     bool        within_budget,
     DebugOverlayData& out)
 {
@@ -59,6 +60,8 @@ void extract_debug_overlay(
 
     if (frame_skipped) {
         out.add("Frame: SKIPPED");
+    } else if (!renderer_active) {
+        out.add("Render: OFF");
     }
 
     out.add(within_budget ? "Budget: OK" : "Budget: OVER");

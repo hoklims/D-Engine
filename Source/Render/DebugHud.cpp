@@ -68,8 +68,9 @@ void extract_debug_hud(
     uint32_t    culled_count,
     uint32_t    dropped_count,
     bool        frame_skipped,
+    bool        renderer_active,
     bool        within_budget,
-    double      frame_time_ms,
+    double      cpu_time_ms,
     double      sim_time_ms,
     DebugHudData& out)
 {
@@ -93,10 +94,11 @@ void extract_debug_hud(
         std::snprintf(buf, sizeof(buf), "A:%u vis:%u cul:%u | %s | %.1fms",
                       agent_count, visible_count, culled_count,
                       within_budget ? "OK" : "OVER",
-                      frame_time_ms);
+                      cpu_time_ms);
         s.add(buf);
 
         if (frame_skipped) s.add("FRAME SKIPPED");
+        else if (!renderer_active) s.add("Render: OFF");
 
         return;
     }
@@ -131,8 +133,9 @@ void extract_debug_hud(
         auto& s = out.add_section("BUDGET");
         s.add(within_budget ? "Budget: OK" : "Budget: OVER");
         if (frame_skipped) s.add("Frame: SKIPPED");
-        std::snprintf(buf, sizeof(buf), "Frame:%.1fms Sim:%.1fms",
-                      frame_time_ms, sim_time_ms);
+        else if (!renderer_active) s.add("Render: OFF");
+        std::snprintf(buf, sizeof(buf), "CPU:%.1fms Sim:%.1fms",
+                      cpu_time_ms, sim_time_ms);
         s.add(buf);
     }
 

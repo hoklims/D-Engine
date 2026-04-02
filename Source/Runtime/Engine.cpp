@@ -407,14 +407,14 @@ void Engine::render() {
     }
 
     // HUD uses current-frame state throughout:
-    //   frame_skipped = !renderer_active_ (accounts for resize failure above)
-    //   frame_ms      = pre-render CPU sum from wip_telemetry_ (current frame)
-    //   sim_ms        = fixed_update from wip_telemetry_ (current frame)
-    bool frame_skipped = !renderer_active_;
-    double frame_ms = (wip_telemetry_.begin_frame_s
-                     + wip_telemetry_.fixed_update_s
-                     + wip_telemetry_.presentation_update_s) * 1000.0;
-    double sim_ms   = wip_telemetry_.fixed_update_s * 1000.0;
+    //   resize_failed   = true only on actual frame loss this frame
+    //   renderer_active_ = false in headless (distinct from failure)
+    //   cpu_ms          = pre-render CPU sum from wip_telemetry_ (current frame)
+    //   sim_ms          = fixed_update from wip_telemetry_ (current frame)
+    double cpu_ms = (wip_telemetry_.begin_frame_s
+                   + wip_telemetry_.fixed_update_s
+                   + wip_telemetry_.presentation_update_s) * 1000.0;
+    double sim_ms = wip_telemetry_.fixed_update_s * 1000.0;
 
     extract_debug_hud(
         hud_mode_,
@@ -427,9 +427,10 @@ void Engine::render() {
         visible,
         culled,
         drop_cap,
-        frame_skipped,
+        resize_failed,
+        renderer_active_,
         sim_.budget_status().within_budget,
-        frame_ms, sim_ms,
+        cpu_ms, sim_ms,
         hud_data_);
     overlay_count_ = generate_hud_instances(
         hud_data_,
@@ -446,7 +447,8 @@ void Engine::render() {
         visible,
         culled,
         drop_cap,
-        frame_skipped,
+        resize_failed,
+        renderer_active_,
         sim_.budget_status().within_budget,
         overlay_data_);
 

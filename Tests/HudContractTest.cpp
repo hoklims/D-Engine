@@ -121,40 +121,45 @@ static void test_frame_timing_current_frame() {
     engine.step_one_frame();
 
     const auto& hud = engine.debug_hud();
-    // Budget section: timing line should exist.
+    // Budget section: timing line should exist with CPU: label.
     bool found_timing = false;
     for (int li = 0; li < hud.sections[2].line_count; ++li) {
-        if (std::strstr(hud.sections[2].lines[li], "Frame:") &&
+        if (std::strstr(hud.sections[2].lines[li], "CPU:") &&
             std::strstr(hud.sections[2].lines[li], "Sim:"))
             found_timing = true;
     }
-    check(found_timing, "frame-timing: timing line present on paused frame");
+    check(found_timing, "frame-timing: CPU:/Sim: timing line present on paused frame");
 
     engine.shutdown();
 }
 
 // =================================================================
-//  Headless: HUD shows SKIPPED (renderer not active)
+//  Headless: HUD shows "Render: OFF", not "SKIPPED"
 // =================================================================
 
-static void test_hud_skipped_headless() {
+static void test_hud_renderer_off_headless() {
     de::EngineConfig cfg;
     cfg.start_scene     = de::StartScene::Crowd;
     cfg.enable_renderer = false;
 
     de::Engine engine;
-    check(engine.init(cfg), "skip-hud: init ok");
+    check(engine.init(cfg), "rend-off: init ok");
 
     engine.step_one_frame();
 
     const auto& hud = engine.debug_hud();
-    bool found = false;
+    bool found_off     = false;
+    bool found_skipped = false;
     for (int si = 0; si < hud.section_count; ++si)
-        for (int li = 0; li < hud.sections[si].line_count; ++li)
+        for (int li = 0; li < hud.sections[si].line_count; ++li) {
+            if (std::strstr(hud.sections[si].lines[li], "Render: OFF"))
+                found_off = true;
             if (std::strstr(hud.sections[si].lines[li], "SKIPPED"))
-                found = true;
+                found_skipped = true;
+        }
 
-    check(found, "skip-hud: SKIPPED shown in headless HUD");
+    check(found_off,      "rend-off: Render: OFF shown in headless HUD");
+    check(!found_skipped, "rend-off: no SKIPPED in headless HUD");
 
     engine.shutdown();
 }
@@ -198,33 +203,37 @@ static void test_hud_coherent_with_stats() {
 }
 
 // =================================================================
-//  Headless: render_stats.frame_skipped is false (not a failure)
-//  while HUD still shows SKIPPED (renderer inactive).
-//  This is the intended distinction.
+//  Headless: HUD and render_stats agree -- no false SKIPPED
 // =================================================================
 
-static void test_headless_stats_vs_hud_skipped() {
+static void test_headless_hud_and_stats_coherent() {
     de::EngineConfig cfg;
     cfg.start_scene     = de::StartScene::Crowd;
     cfg.enable_renderer = false;
 
     de::Engine engine;
-    check(engine.init(cfg), "stats-skip: init ok");
+    check(engine.init(cfg), "coherent: init ok");
 
     engine.step_one_frame();
 
     // render_stats.frame_skipped = false: headless is not a failure.
     check(!engine.render_stats().frame_skipped,
-          "stats-skip: render_stats.frame_skipped == false (headless)");
+          "coherent: render_stats.frame_skipped == false (headless)");
 
-    // HUD shows SKIPPED: renderer is not active.
-    bool hud_skipped = false;
+    // HUD must NOT show SKIPPED (no frame was lost).
+    // HUD shows "Render: OFF" instead (distinct signal).
     const auto& hud = engine.debug_hud();
+    bool hud_skipped = false;
+    bool hud_off     = false;
     for (int si = 0; si < hud.section_count; ++si)
-        for (int li = 0; li < hud.sections[si].line_count; ++li)
+        for (int li = 0; li < hud.sections[si].line_count; ++li) {
             if (std::strstr(hud.sections[si].lines[li], "SKIPPED"))
                 hud_skipped = true;
-    check(hud_skipped, "stats-skip: HUD shows SKIPPED (renderer inactive)");
+            if (std::strstr(hud.sections[si].lines[li], "Render: OFF"))
+                hud_off = true;
+        }
+    check(!hud_skipped, "coherent: HUD has no SKIPPED (headless != failure)");
+    check(hud_off,      "coherent: HUD shows Render: OFF");
 
     engine.shutdown();
 }
@@ -290,9 +299,9 @@ int main() {
     test_first_frame_hud_populated();
     test_sim_timing_current_frame();
     test_frame_timing_current_frame();
-    test_hud_skipped_headless();
+    test_hud_renderer_off_headless();
     test_hud_coherent_with_stats();
-    test_headless_stats_vs_hud_skipped();
+    test_headless_hud_and_stats_coherent();
     test_hud_clean_lifecycle();
     test_hud_tracks_tick();
 

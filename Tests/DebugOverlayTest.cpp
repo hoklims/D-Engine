@@ -62,7 +62,7 @@ int main() {
     {
         de::DebugOverlayData d;
         de::extract_debug_overlay("Crowd", false, 100, 200, 200, 0, 0,
-                                  false, true, d);
+                                  false, true, true, d);
 
         check(d.line_count >= 5, "extraction produces >= 5 lines");
         check(std::strstr(d.lines[0], "Crowd") != nullptr,
@@ -80,7 +80,7 @@ int main() {
     {
         de::DebugOverlayData d;
         de::extract_debug_overlay("Basic", true, 0, 0, 0, 0, 0,
-                                  false, true, d);
+                                  false, true, true, d);
         check(std::strstr(d.lines[1], "PAUSED") != nullptr,
               "paused state shown");
     }
@@ -90,7 +90,7 @@ int main() {
     {
         de::DebugOverlayData d;
         de::extract_debug_overlay("Crowd", false, 0, 0, 0, 0, 0,
-                                  true, true, d);
+                                  true, false, true, d);
         bool found = false;
         for (int i = 0; i < d.line_count; ++i)
             if (std::strstr(d.lines[i], "SKIPPED")) found = true;
@@ -102,7 +102,7 @@ int main() {
     {
         de::DebugOverlayData d;
         de::extract_debug_overlay("Crowd", false, 0, 0, 0, 0, 0,
-                                  false, false, d);
+                                  false, true, false, d);
         bool found = false;
         for (int i = 0; i < d.line_count; ++i)
             if (std::strstr(d.lines[i], "OVER")) found = true;
@@ -114,7 +114,7 @@ int main() {
     {
         de::DebugOverlayData d;
         de::extract_debug_overlay("Crowd", false, 0, 0, 0, 0, 0,
-                                  false, true, d);
+                                  false, true, true, d);
         bool found = false;
         for (int i = 0; i < d.line_count; ++i)
             if (std::strstr(d.lines[i], "OK")) found = true;
@@ -126,7 +126,7 @@ int main() {
     {
         de::DebugOverlayData d;
         de::extract_debug_overlay("Crowd", false, 42, 100, 100, 0, 0,
-                                  false, true, d);
+                                  false, true, true, d);
 
         de::OverlayInstance buf[de::k_max_overlay_instances];
         uint32_t count = de::generate_overlay_instances(
@@ -151,7 +151,7 @@ int main() {
     {
         de::DebugOverlayData d;
         de::extract_debug_overlay("Battlefield", false, 9999, 500, 490, 0, 10,
-                                  false, true, d);
+                                  false, true, true, d);
 
         de::OverlayInstance buf[de::k_max_overlay_instances];
         uint32_t count = de::generate_overlay_instances(
@@ -186,7 +186,7 @@ int main() {
     {
         de::DebugOverlayData d;
         de::extract_debug_overlay("Crowd", false, 42, 100, 100, 0, 0,
-                                  false, true, d);
+                                  false, true, true, d);
 
         de::OverlayInstance buf[4];
         uint32_t count = de::generate_overlay_instances(
@@ -231,7 +231,7 @@ int main() {
     {
         de::DebugOverlayData d;
         de::extract_debug_overlay("Crowd", true, 50, 80, 80, 0, 0,
-                                  false, true, d);
+                                  false, true, true, d);
 
         de::OverlayInstance buf1[de::k_max_overlay_instances];
         de::OverlayInstance buf2[de::k_max_overlay_instances];

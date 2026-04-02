@@ -342,31 +342,31 @@ static void test_overlay_current_frame_coherence() {
 }
 
 // =================================================================
-//  Overlay: frame_skipped reflects current renderer state
+//  Overlay: headless shows "Render: OFF", not "SKIPPED"
 // =================================================================
 
-static void test_overlay_frame_skipped_current() {
+static void test_overlay_renderer_off_headless() {
     de::EngineConfig cfg;
     cfg.start_scene     = de::StartScene::Crowd;
-    cfg.enable_renderer = false;   // headless = effectively skipped
+    cfg.enable_renderer = false;
 
     de::Engine engine;
-    check(engine.init(cfg), "overlay-skip: init ok");
+    check(engine.init(cfg), "overlay-off: init ok");
 
     engine.step_one_frame();
 
     const auto& ov = engine.debug_overlay();
 
-    // Headless -> renderer_active_ == false -> frame_skipped = true
-    // in the overlay.  This is current state, not lagged.
+    // Headless: renderer never created.  HUD/overlay show "Render: OFF"
+    // (not SKIPPED, which is reserved for actual frame loss).
+    bool found_off     = false;
     bool found_skipped = false;
     for (int i = 0; i < ov.line_count; ++i) {
-        if (std::strstr(ov.lines[i], "SKIPPED")) {
-            found_skipped = true;
-            break;
-        }
+        if (std::strstr(ov.lines[i], "Render: OFF")) found_off = true;
+        if (std::strstr(ov.lines[i], "SKIPPED"))     found_skipped = true;
     }
-    check(found_skipped, "overlay-skip: SKIPPED shown in headless mode");
+    check(found_off,      "overlay-off: Render: OFF shown in headless");
+    check(!found_skipped, "overlay-off: no SKIPPED in headless");
 
     engine.shutdown();
 }
@@ -491,7 +491,7 @@ int main() {
     test_draw_call_invariant_headless();
     test_draw_call_invariant_empty_headless();
     test_overlay_current_frame_coherence();
-    test_overlay_frame_skipped_current();
+    test_overlay_renderer_off_headless();
     test_draw_call_invariant_multiframe_headless();
     test_overlay_fresh_after_init();
     test_overlay_clean_after_shutdown();

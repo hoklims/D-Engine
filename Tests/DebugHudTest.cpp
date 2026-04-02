@@ -123,7 +123,7 @@ static void test_extract_full() {
         de::HudMode::Full,
         "Crowd", false, 100, true,
         200, 200, 180, 20, 0,
-        false, true, 1.5, 0.8, d);
+        false, true, true, 1.5, 0.8, d);
 
     check(d.mode == de::HudMode::Full, "full: mode set");
     check(d.section_count == 4, "full: 4 sections");
@@ -155,7 +155,7 @@ static void test_extract_full_paused() {
         de::HudMode::Full,
         "Basic", true, 42, false,
         0, 0, 0, 0, 0,
-        false, true, 0.5, 0.2, d);
+        false, true, true, 0.5, 0.2, d);
 
     check(std::strstr(d.sections[0].lines[1], "PAUSED") != nullptr, "full-paused: state");
     check(std::strstr(d.sections[0].lines[3], "manual") != nullptr, "full-paused: camera manual");
@@ -167,7 +167,7 @@ static void test_extract_full_budget_over() {
         de::HudMode::Full,
         "Crowd", false, 0, true,
         100, 100, 100, 0, 0,
-        false, false, 2.0, 1.0, d);
+        false, true, false, 2.0, 1.0, d);
 
     check(std::strstr(d.sections[2].lines[0], "OVER") != nullptr, "full: budget over");
 }
@@ -178,7 +178,7 @@ static void test_extract_full_frame_skipped() {
         de::HudMode::Full,
         "Crowd", false, 0, true,
         0, 0, 0, 0, 0,
-        true, true, 0.0, 0.0, d);
+        true, false, true, 0.0, 0.0, d);
 
     bool found = false;
     for (int li = 0; li < d.sections[2].line_count; ++li) {
@@ -198,7 +198,7 @@ static void test_extract_compact() {
         de::HudMode::Compact,
         "LaneClash", false, 50, true,
         200, 200, 190, 10, 0,
-        false, true, 1.2, 0.6, d);
+        false, true, true, 1.2, 0.6, d);
 
     check(d.mode == de::HudMode::Compact, "compact: mode set");
     check(d.section_count == 1, "compact: 1 section");
@@ -221,7 +221,7 @@ static void test_extract_compact_frame_skipped() {
         de::HudMode::Compact,
         "Crowd", false, 0, true,
         0, 0, 0, 0, 0,
-        true, true, 0.0, 0.0, d);
+        true, false, true, 0.0, 0.0, d);
 
     bool found = false;
     for (int li = 0; li < d.sections[0].line_count; ++li) {
@@ -241,7 +241,7 @@ static void test_extract_hidden() {
         de::HudMode::Hidden,
         "Crowd", false, 100, true,
         200, 200, 200, 0, 0,
-        false, true, 1.0, 0.5, d);
+        false, true, true, 1.0, 0.5, d);
 
     check(d.mode == de::HudMode::Hidden, "hidden: mode set");
     check(d.section_count == 0, "hidden: 0 sections");
@@ -257,7 +257,7 @@ static void test_generate_full() {
         de::HudMode::Full,
         "Crowd", false, 42, true,
         100, 100, 100, 0, 0,
-        false, true, 1.0, 0.5, d);
+        false, true, true, 1.0, 0.5, d);
 
     de::OverlayInstance buf[de::k_max_overlay_instances];
     uint32_t count = de::generate_hud_instances(
@@ -321,7 +321,7 @@ static void test_generate_compact() {
         de::HudMode::Compact,
         "Crowd", false, 0, true,
         100, 100, 100, 0, 0,
-        false, true, 1.0, 0.5, d);
+        false, true, true, 1.0, 0.5, d);
 
     de::OverlayInstance buf[de::k_max_overlay_instances];
     uint32_t count = de::generate_hud_instances(
@@ -345,14 +345,14 @@ static void test_generate_compact_fewer_than_full() {
         de::HudMode::Full,
         "Crowd", false, 42, true,
         100, 100, 100, 0, 0,
-        false, true, 1.0, 0.5, full_d);
+        false, true, true, 1.0, 0.5, full_d);
 
     de::DebugHudData compact_d;
     de::extract_debug_hud(
         de::HudMode::Compact,
         "Crowd", false, 42, true,
         100, 100, 100, 0, 0,
-        false, true, 1.0, 0.5, compact_d);
+        false, true, true, 1.0, 0.5, compact_d);
 
     de::OverlayInstance buf_full[de::k_max_overlay_instances];
     uint32_t count_full = de::generate_hud_instances(
@@ -376,7 +376,7 @@ static void test_generate_hidden() {
         de::HudMode::Hidden,
         "Crowd", false, 0, true,
         100, 100, 100, 0, 0,
-        false, true, 1.0, 0.5, d);
+        false, true, true, 1.0, 0.5, d);
 
     de::OverlayInstance buf[16];
     uint32_t count = de::generate_hud_instances(
@@ -410,7 +410,7 @@ static void test_generate_bounds() {
         de::HudMode::Full,
         "Battlefield", false, 9999, true,
         500, 500, 490, 10, 0,
-        false, true, 2.0, 1.0, d);
+        false, true, true, 2.0, 1.0, d);
 
     de::OverlayInstance buf[de::k_max_overlay_instances];
     uint32_t count = de::generate_hud_instances(
@@ -438,7 +438,7 @@ static void test_generate_cap() {
         de::HudMode::Full,
         "Crowd", false, 42, true,
         100, 100, 100, 0, 0,
-        false, true, 1.0, 0.5, d);
+        false, true, true, 1.0, 0.5, d);
 
     de::OverlayInstance buf[4];
     uint32_t count = de::generate_hud_instances(
@@ -456,7 +456,7 @@ static void test_generate_deterministic() {
         de::HudMode::Full,
         "Crowd", true, 50, true,
         80, 80, 80, 0, 0,
-        false, true, 1.0, 0.5, d);
+        false, true, true, 1.0, 0.5, d);
 
     de::OverlayInstance buf1[de::k_max_overlay_instances];
     de::OverlayInstance buf2[de::k_max_overlay_instances];
@@ -481,16 +481,61 @@ static void test_extract_full_timing() {
         de::HudMode::Full,
         "Crowd", false, 0, true,
         0, 0, 0, 0, 0,
-        false, true, 16.7, 4.2, d);
+        false, true, true, 16.7, 4.2, d);
 
-    // Budget section should contain timing.
+    // Budget section should contain timing with CPU: label.
     bool found_timing = false;
     for (int li = 0; li < d.sections[2].line_count; ++li) {
-        if (std::strstr(d.sections[2].lines[li], "Frame:") &&
+        if (std::strstr(d.sections[2].lines[li], "CPU:") &&
             std::strstr(d.sections[2].lines[li], "Sim:"))
             found_timing = true;
     }
     check(found_timing, "full: timing line present in budget section");
+}
+
+// =================================================================
+//  Renderer OFF (headless): distinct from SKIPPED
+// =================================================================
+
+static void test_extract_full_renderer_off() {
+    de::DebugHudData d;
+    de::extract_debug_hud(
+        de::HudMode::Full,
+        "Crowd", false, 0, true,
+        0, 0, 0, 0, 0,
+        false, false, true, 0.0, 0.0, d);
+
+    // Budget section should show "Render: OFF", not "SKIPPED".
+    bool found_off = false;
+    bool found_skipped = false;
+    for (int li = 0; li < d.sections[2].line_count; ++li) {
+        if (std::strstr(d.sections[2].lines[li], "Render: OFF"))
+            found_off = true;
+        if (std::strstr(d.sections[2].lines[li], "SKIPPED"))
+            found_skipped = true;
+    }
+    check(found_off,      "renderer-off full: shows Render: OFF");
+    check(!found_skipped, "renderer-off full: no SKIPPED");
+}
+
+static void test_extract_compact_renderer_off() {
+    de::DebugHudData d;
+    de::extract_debug_hud(
+        de::HudMode::Compact,
+        "Crowd", false, 0, true,
+        0, 0, 0, 0, 0,
+        false, false, true, 0.0, 0.0, d);
+
+    bool found_off = false;
+    bool found_skipped = false;
+    for (int li = 0; li < d.sections[0].line_count; ++li) {
+        if (std::strstr(d.sections[0].lines[li], "Render: OFF"))
+            found_off = true;
+        if (std::strstr(d.sections[0].lines[li], "SKIPPED"))
+            found_skipped = true;
+    }
+    check(found_off,      "renderer-off compact: shows Render: OFF");
+    check(!found_skipped, "renderer-off compact: no SKIPPED");
 }
 
 // =================================================================
@@ -520,6 +565,8 @@ int main() {
     test_generate_cap();
     test_generate_deterministic();
     test_extract_full_timing();
+    test_extract_full_renderer_off();
+    test_extract_compact_renderer_off();
 
     std::printf("\nDebugHudTest: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail;

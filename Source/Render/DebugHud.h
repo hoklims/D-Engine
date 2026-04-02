@@ -56,6 +56,11 @@ struct OverlayInstance;
 //   Hidden  -> 0 sections
 //   Compact -> 1 section (condensed overview)
 //   Full    -> 4 sections (Runtime, Crowd, Budget, Controls)
+//
+// Contract:
+//   frame_skipped   = true only on actual frame loss (e.g. resize failure)
+//   renderer_active = false when running headless (no GPU)
+//   cpu_time_ms     = pre-render CPU sum (begin + sim + presentation)
 void extract_debug_hud(
     HudMode     mode,
     const char* scene,
@@ -68,8 +73,9 @@ void extract_debug_hud(
     uint32_t    culled_count,
     uint32_t    dropped_count,
     bool        frame_skipped,
+    bool        renderer_active,
     bool        within_budget,
-    double      frame_time_ms,
+    double      cpu_time_ms,
     double      sim_time_ms,
     DebugHudData& out);
 

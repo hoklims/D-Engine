@@ -35,6 +35,10 @@ struct DebugOverlayData {
 //   visible_count = passed view culling
 //   culled_count  = removed by view culling (extracted - visible)
 //   dropped_count = not extracted (agent_count - extracted)
+//
+// Contract:
+//   frame_skipped   = true only on actual frame loss (e.g. resize failure)
+//   renderer_active = false when running headless (no GPU)
 void extract_debug_overlay(
     const char* scene,
     bool        paused,
@@ -44,6 +48,7 @@ void extract_debug_overlay(
     uint32_t    culled_count,
     uint32_t    dropped_count,
     bool        frame_skipped,
+    bool        renderer_active,
     bool        within_budget,
     DebugOverlayData& out);
 
