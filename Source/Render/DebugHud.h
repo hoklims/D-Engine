@@ -58,6 +58,8 @@ struct OverlayInstance;
 //   Full    -> 4 sections (Runtime, Crowd, Budget, Controls)
 //
 // Contract:
+//   cap_count       = agents not extracted (agent_count - extracted_count)
+//                     NOT the same as RenderStats.dropped_count
 //   frame_skipped   = true only on actual frame loss (e.g. resize failure)
 //   renderer_active = false when running headless (no GPU)
 //   cpu_time_ms     = pre-render CPU sum (begin + sim + presentation)
@@ -71,7 +73,7 @@ void extract_debug_hud(
     uint32_t    extracted_count,
     uint32_t    visible_count,
     uint32_t    culled_count,
-    uint32_t    dropped_count,
+    uint32_t    cap_count,
     bool        frame_skipped,
     bool        renderer_active,
     bool        within_budget,

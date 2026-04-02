@@ -469,13 +469,15 @@ static void test_overlay_matches_render_stats() {
     const auto& st = engine.render_stats();
     const auto& ov = engine.debug_overlay();
 
-    // Overlay line 4 = "Vis: N  cull:M  drop:K"
+    // Overlay line 4 = "Vis: N  cull:M  cap:K"
+    // cap = agent_count - extracted_count (extraction-cap overflow).
+    // This is NOT RenderStats.dropped_count (which is agent_count - instance_count).
     char expected[64];
-    std::snprintf(expected, sizeof(expected), "Vis: %u  cull:%u  drop:%u",
+    std::snprintf(expected, sizeof(expected), "Vis: %u  cull:%u  cap:%u",
                   st.visible_count, st.culled_count,
                   st.agent_count - st.extracted_count);
     check(std::strstr(ov.lines[4], expected) != nullptr,
-          "ov-match: overlay line matches RenderStats");
+          "ov-match: overlay counters coherent");
 
     engine.shutdown();
 }

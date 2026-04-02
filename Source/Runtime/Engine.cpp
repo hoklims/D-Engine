@@ -392,10 +392,10 @@ void Engine::render() {
     ScopeTimer t(&wip_telemetry_.render_s);
 
     // Derive culling counters from the pristine frame vs culled work buffer.
-    uint32_t extracted = render_frame_.extracted_count;
-    uint32_t visible   = culled_frame_.extracted_count;
-    uint32_t culled    = extracted - visible;
-    uint32_t drop_cap  = render_frame_.agent_count - extracted;
+    uint32_t extracted  = render_frame_.extracted_count;
+    uint32_t visible    = culled_frame_.extracted_count;
+    uint32_t culled     = extracted - visible;
+    uint32_t cap_count  = render_frame_.agent_count - extracted;
 
     // Resolve resize BEFORE HUD extraction so frame_skipped is truthful.
     bool resize_failed = false;
@@ -426,7 +426,7 @@ void Engine::render() {
         render_frame_.extracted_count,
         visible,
         culled,
-        drop_cap,
+        cap_count,
         resize_failed,
         renderer_active_,
         sim_.budget_status().within_budget,
@@ -446,7 +446,7 @@ void Engine::render() {
         render_frame_.agent_count,
         visible,
         culled,
-        drop_cap,
+        cap_count,
         resize_failed,
         renderer_active_,
         sim_.budget_status().within_budget,

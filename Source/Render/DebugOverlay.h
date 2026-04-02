@@ -37,6 +37,8 @@ struct DebugOverlayData {
 //   dropped_count = not extracted (agent_count - extracted)
 //
 // Contract:
+//   cap_count       = agents not extracted (agent_count - extracted_count)
+//                     NOT the same as RenderStats.dropped_count
 //   frame_skipped   = true only on actual frame loss (e.g. resize failure)
 //   renderer_active = false when running headless (no GPU)
 void extract_debug_overlay(
@@ -46,7 +48,7 @@ void extract_debug_overlay(
     uint32_t    agent_count,
     uint32_t    visible_count,
     uint32_t    culled_count,
-    uint32_t    dropped_count,
+    uint32_t    cap_count,
     bool        frame_skipped,
     bool        renderer_active,
     bool        within_budget,

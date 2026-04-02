@@ -329,7 +329,7 @@ static void test_overlay_current_frame_coherence() {
     check(std::strstr(ov.lines[3], expected_agents) != nullptr,
           "overlay-coh: agent_count matches current frame");
 
-    // Overlay line 4 = "Vis: N  cull:M  drop:K".
+    // Overlay line 4 = "Vis: N  cull:M  cap:K".
     // In auto-frame headless, visible == extracted (no culling).
     const auto& st = engine.render_stats();
     char expected_vis[32];

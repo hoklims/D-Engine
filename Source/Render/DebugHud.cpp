@@ -66,7 +66,7 @@ void extract_debug_hud(
     uint32_t    extracted_count,
     uint32_t    visible_count,
     uint32_t    culled_count,
-    uint32_t    dropped_count,
+    uint32_t    cap_count,
     bool        frame_skipped,
     bool        renderer_active,
     bool        within_budget,
@@ -123,8 +123,8 @@ void extract_debug_hud(
         std::snprintf(buf, sizeof(buf), "Agents: %u  ext:%u",
                       agent_count, extracted_count);
         s.add(buf);
-        std::snprintf(buf, sizeof(buf), "Vis:%u  cull:%u  drop:%u",
-                      visible_count, culled_count, dropped_count);
+        std::snprintf(buf, sizeof(buf), "Vis:%u  cull:%u  cap:%u",
+                      visible_count, culled_count, cap_count);
         s.add(buf);
     }
 
